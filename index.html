@@ -518,13 +518,13 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Firebase Config ──
 const firebaseConfig = {
   apiKey: "AIzaSyAbSt1_DiCC9c0qglAUz-iB_36DoODTzl0",
-  authDomain: "gharseh-app.vercel.app",
+  authDomain: "gharseh-billing.firebaseapp.com",
   projectId: "gharseh-billing",
   storageBucket: "gharseh-billing.firebasestorage.app",
   messagingSenderId: "896590052474",
@@ -566,9 +566,12 @@ function setLogos() {
 window.signInWithGoogle = async function() {
   try {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   } catch(e) { showToast('Sign in failed. Try again.'); }
 };
+
+// Handle redirect result on app load
+getRedirectResult(auth).catch((e) => { console.log("Redirect result:", e?.code); });
 
 window.signOutUser = async function() {
   if (!confirm('Sign out?')) return;
