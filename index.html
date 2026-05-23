@@ -294,11 +294,13 @@
     <div style="font-size:11px;letter-spacing:2px;color:var(--gold);margin-bottom:32px;">HOMEMADE WITH LOVE</div>
     <div class="login-title">Welcome back 🧡</div>
     <div class="login-sub" style="margin-bottom:28px;">Sign in to access your GharsSeh billing dashboard</div>
-    <button class="google-btn" onclick="signInWithGoogle()">
-      <svg width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.34-8.16 2.34-6.26 0-11.57-3.59-13.49-8.78l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
-      Continue with Google
-    </button>
-    <div class="login-note" style="margin-top:16px;">Your data is private and only accessible by you</div>
+    <input id="login-email" type="email" placeholder="Email address" style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-1);font-size:15px;margin-bottom:12px;box-sizing:border-box;outline:none;" />
+    <input id="login-password" type="password" placeholder="Password" style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-1);font-size:15px;margin-bottom:20px;box-sizing:border-box;outline:none;" />
+    <button class="google-btn" onclick="signInWithEmail()" style="background:var(--green);color:#fff;border:none;">Sign In</button>
+    <div style="margin-top:16px;text-align:center;">
+      <span onclick="forgotPassword()" style="font-size:13px;color:var(--gold);cursor:pointer;text-decoration:underline;">Forgot password?</span>
+    </div>
+    <div class="login-note" style="margin-top:12px;">Your data is private and only accessible by you</div>
   </div>
 
   <!-- LOADING -->
@@ -518,7 +520,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Firebase Config ──
@@ -563,15 +565,29 @@ function setLogos() {
 }
 
 // ── Auth ──
-window.signInWithGoogle = async function() {
+window.signInWithEmail = async function() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showToast('Please enter email and password.'); return; }
   try {
-    const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
-  } catch(e) { showToast('Sign in failed. Try again.'); }
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch(e) {
+    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+      showToast('Wrong email or password. Try again.');
+    } else {
+      showToast('Sign in failed. Try again.');
+    }
+  }
 };
 
-// Handle redirect result on app load
-getRedirectResult(auth).catch((e) => { console.log("Redirect result:", e?.code); });
+window.forgotPassword = async function() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { showToast('Enter your email first, then tap Forgot password.'); return; }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    showToast('Password reset email sent! Check your inbox.');
+  } catch(e) { showToast('Could not send reset email. Check the address.'); }
+};
 
 window.signOutUser = async function() {
   if (!confirm('Sign out?')) return;
