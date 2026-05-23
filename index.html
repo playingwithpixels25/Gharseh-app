@@ -527,7 +527,7 @@
   <!-- Bottom Nav -->
   <nav class="bottom-nav" id="main-nav" style="display:none;">
     <button class="nav-item active" id="nav-home" onclick="navTo('home')"><i class="ti ti-home"></i><span>Home</span></button>
-    <button class="nav-item" id="nav-allbills" onclick="goTo('allbills');renderAllBills();"><i class="ti ti-history"></i><span>History</span></button>
+    <button class="nav-item" id="nav-allbills" onclick="navTo('allbills');"><i class="ti ti-history"></i><span>History</span></button>
     <div class="nav-center" onclick="navTo('bill')">
       <div class="nav-center-btn"><i class="ti ti-plus"></i></div>
       <span style="font-size:11px;color:var(--green);font-weight:500;margin-top:2px;display:block;text-align:center;">New Bill</span>
@@ -674,7 +674,7 @@ async function loadData() {
 }
 
 // ── Navigation ──
-const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales'];
+const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales','allbills'];
 
 function showScreen(id) {
   SCREENS.forEach(s => {
@@ -694,6 +694,7 @@ window.goTo = function(id) {
   if (id === 'products') renderProducts();
   if (id === 'sales') { renderSales(); document.getElementById('sales-date-label').textContent = formatDate(new Date()); }
   if (id === 'bill') initBillScreen();
+  if (id === 'allbills') renderAllBills();
 };
 
 window.navTo = function(id) {
@@ -702,6 +703,7 @@ window.navTo = function(id) {
   if (id === 'home') renderHome();
   if (id === 'products') renderProducts();
   if (id === 'bill') initBillScreen();
+  if (id === 'allbills') renderAllBills();
 };
 
 window.goBack = function() {
@@ -711,6 +713,7 @@ window.goBack = function() {
   if (prev === 'home') renderHome();
   if (prev === 'products') renderProducts();
   if (prev === 'sales') renderSales();
+  if (prev === 'allbills') renderAllBills();
 };
 
 // ── Utilities ──
@@ -858,6 +861,8 @@ window.saveProduct = async function() {
 
 // ── Bill Builder ──
 function initBillScreen() {
+  // Skip reset if we're loading an existing bill for editing
+  if (window._editingBill) return;
   const draft = loadDraft();
   if (draft && (draft.items?.length || draft.custName)) {
     document.getElementById('draft-banner').style.display='flex';
@@ -1117,7 +1122,6 @@ window.viewBillDetail = function(id) {
   const b=bills.find(x=>x.id===id);
   if (!b) return;
   renderBillContent(b);
-  // Store viewed bill id so Edit Bill can reload it
   window._viewingBillId = id;
   screenStack.push('preview');
   showScreen('preview');
@@ -1142,7 +1146,6 @@ window.deleteBill = async function(id) {
 window.editCurrentBill = function() {
   const id = window._viewingBillId;
   if (id) {
-    // Load saved bill back into bill builder
     const b = bills.find(x=>x.id===id);
     if (b) {
       currentBillId = id;
@@ -1150,19 +1153,28 @@ window.editCurrentBill = function() {
         const prod = products.find(p=>p.name===it.name);
         if (!prod) return null;
         const vIdx = prod.variants.findIndex(v=>v.label===it.variant);
-        return { productId:prod.id, productName:it.name, variants:prod.variants, variantIdx:vIdx>=0?vIdx:0, qty:it.qty };
+        return { productId:prod.id, productName:it.name, category:prod.category, variants:prod.variants, variantIdx:vIdx>=0?vIdx:0, qty:it.qty };
       }).filter(Boolean);
+      // flag to skip draft restore in initBillScreen
+      window._editingBill = true;
+      screenStack.push('bill');
+      showScreen('bill');
+      // Set fields after screen is shown
       setTimeout(()=>{
         document.getElementById('cust-name').value = b.custName||'';
         document.getElementById('cust-phone').value = b.custPhone||'';
         const dv = document.getElementById('discount-val');
         if (dv) dv.value = b.discountVal||0;
         discountType = b.discountType||'flat';
+        document.getElementById('toggle-flat').classList.toggle('active', discountType==='flat');
+        document.getElementById('toggle-pct').classList.toggle('active', discountType==='pct');
+        document.getElementById('draft-banner').style.display='none';
+        document.getElementById('bill-search').value='';
+        document.getElementById('bill-search-results').classList.remove('show');
         renderBillItems();
         recalc();
-      }, 100);
-      window._viewingBillId = null;
-      goTo('bill');
+        window._editingBill = false;
+      }, 50);
       return;
     }
   }
