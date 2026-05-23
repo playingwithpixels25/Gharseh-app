@@ -1095,8 +1095,18 @@ window.savePDF = async function() {
     pdf.addImage(imgData, 'PNG', 0, 0, imgW, finalH);
 
     const billNo = el.querySelector('.bill-no')?.textContent?.trim().toLowerCase().replace(/\s+/g,'') || 'bill';
-    pdf.save(`${billNo}.pdf`);
-    showToast('PDF saved!');
+    const fileName = `${billNo}.pdf`;
+
+    // Median APK: use native file download bridge
+    if (window.median && window.median.share && window.median.share.downloadFile) {
+      const b64 = pdf.output('datauristring'); // data:application/pdf;base64,...
+      window.median.share.downloadFile({ url: b64, filename: fileName });
+      showToast('PDF saved to Downloads!');
+    } else {
+      // Browser fallback
+      pdf.save(fileName);
+      showToast('PDF saved!');
+    }
   } catch(e) {
     console.error(e);
     showToast('PDF failed. Try again.');
