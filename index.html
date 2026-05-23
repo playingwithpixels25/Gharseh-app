@@ -1067,18 +1067,35 @@ window.savePDF = async function() {
   if (!el) { showToast('Bill not found'); return; }
   showToast('Generating PDF…');
   try {
-    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff' });
+    // Clone and strip card styling so we get clean white bill
+    const clone = el.cloneNode(true);
+    clone.style.cssText = 'background:#fff;padding:24px 20px;margin:0;border-radius:0;border:none;box-shadow:none;width:420px;';
+    clone.style.position = 'fixed';
+    clone.style.top = '-9999px';
+    clone.style.left = '-9999px';
+    document.body.appendChild(clone);
+
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false
+    });
+    document.body.removeChild(clone);
+
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' });
+    // A6 = 105mm x 148mm
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a6' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgW = pageW;
     const imgH = (canvas.height * pageW) / canvas.width;
-    const finalH = imgH > pageH ? pageH : imgH;
+    const finalH = Math.min(imgH, pageH);
     pdf.addImage(imgData, 'PNG', 0, 0, imgW, finalH);
-    const billNo = el.querySelector('.bill-no')?.textContent || 'bill';
-    pdf.save(`GharsSeh-${billNo}.pdf`);
+
+    const billNo = el.querySelector('.bill-no')?.textContent?.trim().toLowerCase().replace(/\s+/g,'') || 'bill';
+    pdf.save(`${billNo}.pdf`);
     showToast('PDF saved!');
   } catch(e) {
     console.error(e);
