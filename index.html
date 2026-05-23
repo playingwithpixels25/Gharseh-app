@@ -534,7 +534,6 @@
   <nav class="bottom-nav" id="main-nav" style="display:none;">
     <button class="nav-item active" id="nav-home" onclick="navTo('home')"><i class="ti ti-home"></i><span>Home</span></button>
     <button class="nav-item" id="nav-allbills" onclick="navTo('allbills');"><i class="ti ti-history"></i><span>History</span></button>
-    <div style="width:64px;"></div>
     <button class="nav-item" id="nav-products" onclick="navTo('products')"><i class="ti ti-package"></i><span>Products</span></button>
   </nav>
 </div>
@@ -1248,8 +1247,13 @@ window.renderAllBills = function() {
   const iconColors=['#d4edda','#fde8cb','#d6e4f5','#f5d6e4','#e4d6f5','#f5f0d6'];
   const iconTCs=['#1a5c32','#7a3e00','#1a3a6b','#7a1a46','#3d1a7a','#5c4a00'];
 
-  document.getElementById('allbills-list').innerHTML = Object.entries(groups).map(([key,g])=>`
-    <div style="font-size:12px;font-weight:600;color:var(--text-3);margin:12px 0 8px;letter-spacing:0.5px;text-transform:uppercase;">${g.label}</div>
+  document.getElementById('allbills-list').innerHTML = Object.entries(groups).map(([key,g])=>{
+    const dayTotal = g.bills.reduce((s,b)=>s+(b.total||0), 0);
+    return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:0.5px;text-transform:uppercase;">${g.label}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--green);">${fmtRupee(dayTotal)}</div>
+    </div>
     ${g.bills.map((b,i)=>{
       const ci=i%iconColors.length;
       return `<div class="sales-bill-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:10px;">
@@ -1269,7 +1273,8 @@ window.renderAllBills = function() {
         </div>
       </div>`;
     }).join('')}
-  `).join('');
+  `;
+  }).join('');
 };
 
 // ── FIX 5: Delete from preview ──
