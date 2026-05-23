@@ -471,7 +471,7 @@
     </div>
     <div class="preview-actions">
       <button class="edit-bill-btn" onclick="editCurrentBill()"><i class="ti ti-pencil"></i> Edit Bill</button>
-      <button class="print-bill-btn" onclick="printBill()"><i class="ti ti-printer"></i> Print / Save PDF</button>
+      <button class="print-bill-btn" onclick="savePDF()"><i class="ti ti-download"></i> Save PDF</button>
     </div>
     <div class="preview-actions" style="margin-top:8px;">
       <button class="edit-bill-btn" style="background:#25D366;color:#fff;border:none;flex:1;" onclick="shareWhatsApp()"><i class="ti ti-brand-whatsapp"></i> Send on WhatsApp</button>
@@ -538,6 +538,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -1055,16 +1056,15 @@ function renderBillContent(b) {
     </div>`;
 }
 
-window.printBill = function() {
-  // Try native print first; if in Median APK webview, also trigger via JS bridge
-  try {
-    if (window.median && window.median.share) {
-      // Median native share — not available for print, fall through
-    }
-    window.print();
-  } catch(e) {
-    showToast('Use browser menu → Print / Share to save PDF');
-  }
+window.savePDF = async function() {
+  showToast('Generating PDF...');
+  const { jsPDF } = window.jspdf;
+  const bill = document.getElementById('bill-paper-content');
+  const doc = new jsPDF({ unit: 'mm', format: 'a6', orientation: 'portrait' });
+  await doc.html(bill, {
+    callback: function(doc) { doc.save('GharsSeh-Bill.pdf'); },
+    x: 5, y: 5, width: 95, windowWidth: bill.scrollWidth
+  });
 };
 
 // ── Sales ──
