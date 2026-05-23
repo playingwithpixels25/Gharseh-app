@@ -56,10 +56,11 @@
   .nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 20px;border:none;background:none;color:var(--text-3);font-family:var(--font);font-size:11px;}
   .nav-item i{font-size:22px;}
   .nav-item.active{color:var(--green);}
-  .nav-center{margin-top:-28px;display:flex;flex-direction:column;align-items:center;}
-  .nav-center-btn{width:56px;height:56px;border-radius:50%;background:var(--green);border:4px solid var(--cream);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);}
-  .nav-center-btn i{font-size:24px;color:white;}
-  .nav-center span{font-size:11px;color:var(--green);font-weight:500;margin-top:2px;}
+
+  /* Floating New Bill Button */
+  .fab-new-bill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);z-index:200;background:var(--green);color:#fff;border:none;border-radius:28px;padding:13px 28px;display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(45,90,39,0.4);cursor:pointer;white-space:nowrap;}
+  .fab-new-bill i{font-size:20px;}
+  .fab-new-bill:active{transform:translateX(-50%) scale(0.96);}
 
   /* Cards */
   .card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border-light);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);}
@@ -474,7 +475,6 @@
       <button class="print-bill-btn" onclick="savePDF()"><i class="ti ti-printer"></i> Save PDF</button>
     </div>
     <div class="preview-actions" style="margin-top:8px;">
-      <button class="edit-bill-btn" style="background:#25D366;color:#fff;border:none;flex:1;" onclick="shareWhatsApp()"><i class="ti ti-brand-whatsapp"></i> Send on WhatsApp</button>
       <button class="edit-bill-btn" style="background:var(--red,#e53935);color:#fff;border:none;flex:1;" onclick="deleteCurrentBill()"><i class="ti ti-trash"></i> Delete Bill</button>
     </div>
     <div class="scroll-area" style="padding:0;" id="printable-bill">
@@ -514,7 +514,7 @@
     <div class="back-bar">
       <button class="back-btn" onclick="goBack()"><i class="ti ti-arrow-left"></i></button>
       <div><div class="back-bar-title">All Bills</div><div style="font-size:12px;color:var(--text-3);">Complete history</div></div>
-      <img id="logo-allbills" class="logo-sm" alt="GharsSeh" />
+      <button onclick="exportCSV()" style="background:var(--green);color:#fff;border:none;border-radius:var(--radius-sm);padding:8px 12px;font-family:var(--font);font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;cursor:pointer;"><i class="ti ti-download" style="font-size:14px;"></i> Export</button>
     </div>
     <div class="scroll-area" style="padding-top:4px;">
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;" id="allbills-filter-bar">
@@ -524,14 +524,17 @@
     </div>
   </div>
 
+  <!-- Floating New Bill Button -->
+  <button class="fab-new-bill" id="fab-new-bill" onclick="navTo('bill')" style="display:none;">
+    <i class="ti ti-plus"></i>
+    <span>New Bill</span>
+  </button>
+
   <!-- Bottom Nav -->
   <nav class="bottom-nav" id="main-nav" style="display:none;">
     <button class="nav-item active" id="nav-home" onclick="navTo('home')"><i class="ti ti-home"></i><span>Home</span></button>
     <button class="nav-item" id="nav-allbills" onclick="navTo('allbills');"><i class="ti ti-history"></i><span>History</span></button>
-    <div class="nav-center" onclick="navTo('bill')">
-      <div class="nav-center-btn"><i class="ti ti-plus"></i></div>
-      <span style="font-size:11px;color:var(--green);font-weight:500;margin-top:2px;display:block;text-align:center;">New Bill</span>
-    </div>
+    <div style="width:64px;"></div>
     <button class="nav-item" id="nav-products" onclick="navTo('products')"><i class="ti ti-package"></i><span>Products</span></button>
   </nav>
 </div>
@@ -623,6 +626,7 @@ onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     showScreen('loading');
     document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('fab-new-bill').style.display = 'flex';
     renderUserChip();
     await loadData();
     showScreen('home');
@@ -631,6 +635,7 @@ onAuthStateChanged(auth, async (user) => {
   } else {
     currentUser = null;
     document.getElementById('main-nav').style.display = 'none';
+    document.getElementById('fab-new-bill').style.display = 'none';
     showScreen('login');
     screenStack = ['login'];
   }
@@ -1033,7 +1038,7 @@ function renderBillContent(b) {
     <div class="bill-header">
       <img src="${LOGO_B64}" class="bill-logo-print" style="height:64px;object-fit:contain;margin-bottom:4px;" alt="GharsSeh" />
       <div class="bill-tagline">Homemade With Love</div>
-      <div class="bill-address">📍 Guwahati, Assam · India &nbsp;|&nbsp; 📞 +91 98765 43210</div>
+      <div class="bill-address">📍 Guwahati, Assam · India &nbsp;|&nbsp; 📞 +91 7002614813</div>
     </div>
     <div class="bill-divider"></div>
     <div class="bill-meta">
@@ -1056,9 +1061,8 @@ function renderBillContent(b) {
     <div class="bill-grand-total"><span>Grand Total</span><span>${fmtRupee(b.total)}</span></div>
     <div class="bill-divider"></div>
     <div class="bill-footer">
-      <div class="bill-footer-main">Thank you for supporting homemade food! ❤️</div>
+      <div class="bill-footer-main">Thank you for supporting us. ❤️</div>
       <div class="bill-footer-script">See you again!</div>
-      <div class="bill-footer-sub"><i class="ti ti-shield-check"></i> Thank you for supporting local & homemade. We truly appreciate your trust.</div>
     </div>`;
 }
 
@@ -1295,7 +1299,45 @@ window.shareWhatsApp = function() {
   var msg = 'GharsSeh Bill\nBill No: ' + billNo + '\nCustomer: ' + custName + '\n\n' + itemLines.join('\n') + '\n\nTotal: ' + total + '\n\nGharsSeh - Homemade With Love, Guwahati';
   var url = 'https://wa.me/?text=' + encodeURIComponent(msg);
   window.open(url, '_blank');
-};// ── Click outside to close search ──
+};// ── Export CSV ──
+window.exportCSV = function() {
+  if (!bills.length) { showToast('No bills to export'); return; }
+
+  // Build unique customers map + all bill rows
+  const rows = [['Bill No','Date','Customer Name','Phone','Items','Subtotal','Discount','Total']];
+  [...bills].sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(b=>{
+    const date = new Date(b.date||b.createdAt?.toDate?.()?.toISOString()||'').toLocaleDateString('en-IN');
+    const items = (b.items||[]).map(it=>`${it.name} x${it.qty}`).join(' | ');
+    rows.push([
+      b.billNo||'',
+      date,
+      b.custName||'',
+      b.custPhone||'',
+      items,
+      b.subtotal||b.total||0,
+      b.discount||0,
+      b.total||0
+    ]);
+  });
+
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const fileName = `gharsseh-bills-${new Date().toISOString().slice(0,10)}.csv`;
+
+  if (window.median && window.median.share && window.median.share.downloadFile) {
+    const b64 = btoa(unescape(encodeURIComponent(csv)));
+    window.median.share.downloadFile({ url: `data:text/csv;base64,${b64}`, filename: fileName });
+    showToast('CSV saved to Downloads!');
+  } else {
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName; a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported!');
+  }
+};
+
+// ── Click outside to close search ──
 document.addEventListener('click', e => {
   const res=document.getElementById('bill-search-results');
   if (res&&!res.contains(e.target)&&e.target.id!=='bill-search') res.classList.remove('show');
