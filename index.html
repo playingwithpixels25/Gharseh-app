@@ -417,15 +417,15 @@
         <div class="customer-row">
           <i class="ti ti-user customer-icon"></i>
           <div class="customer-input">
-            <label>Customer Name (optional)</label>
-            <input id="cust-name" placeholder="Enter name" oninput="saveDraft()" />
+            <label>Customer Name <span style="color:var(--red);">*</span></label>
+            <input id="cust-name" placeholder="Enter name" oninput="saveDraft()" required />
           </div>
         </div>
         <div class="customer-row" style="margin-bottom:0;">
           <i class="ti ti-phone customer-icon"></i>
           <div class="customer-input">
-            <label>Phone Number (optional)</label>
-            <input id="cust-phone" placeholder="Enter phone number" type="tel" oninput="saveDraft()" />
+            <label>Phone Number <span style="color:var(--red);">*</span></label>
+            <input id="cust-phone" placeholder="Enter phone number" type="tel" oninput="saveDraft()" required />
           </div>
         </div>
       </div>
@@ -470,8 +470,12 @@
       <img id="logo-preview" class="logo-sm" alt="GharsSeh" />
     </div>
     <div class="preview-actions">
-      <button class="edit-bill-btn" onclick="goBack()"><i class="ti ti-pencil"></i> Edit Bill</button>
+      <button class="edit-bill-btn" onclick="editCurrentBill()"><i class="ti ti-pencil"></i> Edit Bill</button>
       <button class="print-bill-btn" onclick="printBill()"><i class="ti ti-printer"></i> Print / Save PDF</button>
+    </div>
+    <div class="preview-actions" style="margin-top:8px;">
+      <button class="edit-bill-btn" style="background:#25D366;color:#fff;border:none;flex:1;" onclick="shareWhatsApp()"><i class="ti ti-brand-whatsapp"></i> Send on WhatsApp</button>
+      <button class="edit-bill-btn" style="background:var(--red,#e53935);color:#fff;border:none;flex:1;" onclick="deleteCurrentBill()"><i class="ti ti-trash"></i> Delete Bill</button>
     </div>
     <div class="scroll-area" style="padding:0;" id="printable-bill">
       <div class="bill-paper" id="bill-paper-content"></div>
@@ -505,9 +509,25 @@
     </div>
   </div>
 
+  <!-- ALL BILLS SCREEN -->
+  <div class="screen" id="screen-allbills">
+    <div class="back-bar">
+      <button class="back-btn" onclick="goBack()"><i class="ti ti-arrow-left"></i></button>
+      <div><div class="back-bar-title">All Bills</div><div style="font-size:12px;color:var(--text-3);">Complete history</div></div>
+      <img id="logo-allbills" class="logo-sm" alt="GharsSeh" />
+    </div>
+    <div class="scroll-area" style="padding-top:4px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;" id="allbills-filter-bar">
+        <input id="allbills-search" placeholder="Search by name, bill no..." oninput="renderAllBills()" style="flex:1;min-width:160px;height:38px;padding:0 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:14px;color:var(--text);" />
+      </div>
+      <div id="allbills-list"></div>
+    </div>
+  </div>
+
   <!-- Bottom Nav -->
   <nav class="bottom-nav" id="main-nav" style="display:none;">
     <button class="nav-item active" id="nav-home" onclick="navTo('home')"><i class="ti ti-home"></i><span>Home</span></button>
+    <button class="nav-item" id="nav-allbills" onclick="goTo('allbills');renderAllBills();"><i class="ti ti-history"></i><span>History</span></button>
     <div class="nav-center" onclick="navTo('bill')">
       <div class="nav-center-btn"><i class="ti ti-plus"></i></div>
       <span style="font-size:11px;color:var(--green);font-weight:500;margin-top:2px;display:block;text-align:center;">New Bill</span>
@@ -953,13 +973,17 @@ window.clearBill = function() { billItems=[]; document.getElementById('discount-
 
 window.previewBill = async function() {
   if (!billItems.length) { showToast('Add at least one item'); return; }
+  const _cn = document.getElementById('cust-name').value.trim();
+  const _cp = document.getElementById('cust-phone').value.trim();
+  if (!_cn) { showToast('Please enter customer name'); document.getElementById('cust-name').focus(); return; }
+  if (!_cp) { showToast('Please enter phone number'); document.getElementById('cust-phone').focus(); return; }
   const sub=billItems.reduce((s,item)=>s+item.variants[item.variantIdx].price*item.qty,0);
   const dv=parseFloat(document.getElementById('discount-val')?.value||'0')||0;
   let disc=0;
   if (discountType==='flat') disc=Math.min(dv,sub);
   else disc=sub*Math.min(dv,100)/100;
   const total=sub-disc;
-  const custName=document.getElementById('cust-name').value.trim()||'Valued Customer';
+  const custName=document.getElementById('cust-name').value.trim();
   const custPhone=document.getElementById('cust-phone').value.trim();
 
   // Get or create bill number
@@ -986,6 +1010,7 @@ window.previewBill = async function() {
   await setDoc(doc(db,'users',currentUser.uid,'bills',billId), billData);
   clearDraft();
   currentBillId = null;
+  window._viewingBillId = billId;
   renderBillContent(billData);
   goTo('preview');
 };
@@ -1030,7 +1055,17 @@ function renderBillContent(b) {
     </div>`;
 }
 
-window.printBill = function() { window.print(); };
+window.printBill = function() {
+  // Try native print first; if in Median APK webview, also trigger via JS bridge
+  try {
+    if (window.median && window.median.share) {
+      // Median native share — not available for print, fall through
+    }
+    window.print();
+  } catch(e) {
+    showToast('Use browser menu → Print / Share to save PDF');
+  }
+};
 
 // ── Sales ──
 function renderSales() {
@@ -1068,6 +1103,8 @@ window.viewBillDetail = function(id) {
   const b=bills.find(x=>x.id===id);
   if (!b) return;
   renderBillContent(b);
+  // Store viewed bill id so Edit Bill can reload it
+  window._viewingBillId = id;
   screenStack.push('preview');
   showScreen('preview');
 };
@@ -1085,6 +1122,134 @@ window.deleteBill = async function(id) {
   if (!confirm('Delete this bill? This cannot be undone.')) return;
   await deleteDoc(doc(db,'users',currentUser.uid,'bills',id));
   showToast('Bill deleted');
+};
+
+// ── FIX 1: Edit Current Bill ──
+window.editCurrentBill = function() {
+  const id = window._viewingBillId;
+  if (id) {
+    // Load saved bill back into bill builder
+    const b = bills.find(x=>x.id===id);
+    if (b) {
+      currentBillId = id;
+      billItems = b.items.map(it => {
+        const prod = products.find(p=>p.name===it.name);
+        if (!prod) return null;
+        const vIdx = prod.variants.findIndex(v=>v.label===it.variant);
+        return { productId:prod.id, productName:it.name, variants:prod.variants, variantIdx:vIdx>=0?vIdx:0, qty:it.qty };
+      }).filter(Boolean);
+      setTimeout(()=>{
+        document.getElementById('cust-name').value = b.custName||'';
+        document.getElementById('cust-phone').value = b.custPhone||'';
+        const dv = document.getElementById('discount-val');
+        if (dv) dv.value = b.discountVal||0;
+        discountType = b.discountType||'flat';
+        renderBillItems();
+        recalc();
+      }, 100);
+      window._viewingBillId = null;
+      goTo('bill');
+      return;
+    }
+  }
+  goBack();
+};
+
+// ── FIX 4: All Bills (History) ──
+window.renderAllBills = function() {
+  const search = (document.getElementById('allbills-search')?.value||'').toLowerCase();
+  const logoEl = document.getElementById('logo-allbills');
+  if (logoEl) logoEl.src = LOGO_B64;
+
+  // Group bills by date
+  const sorted = [...bills].sort((a,b)=>{
+    const da = new Date(a.date||a.createdAt?.toDate?.()?.toISOString()||0);
+    const db2 = new Date(b.date||b.createdAt?.toDate?.()?.toISOString()||0);
+    return db2-da;
+  });
+
+  const filtered = search ? sorted.filter(b=>
+    (b.custName||'').toLowerCase().includes(search) ||
+    (b.billNo||'').toLowerCase().includes(search) ||
+    (b.items||[]).some(it=>it.name.toLowerCase().includes(search))
+  ) : sorted;
+
+  if (!filtered.length) {
+    document.getElementById('allbills-list').innerHTML = `<div class="empty-state"><i class="ti ti-receipt-off"></i><p>${search?'No bills match your search.':'No bills yet.'}</p></div>`;
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  filtered.forEach(b=>{
+    const d = new Date(b.date||b.createdAt?.toDate?.()?.toISOString()||Date.now());
+    const key = d.toDateString();
+    if (!groups[key]) groups[key] = { label: formatDateShort(d), bills:[] };
+    groups[key].bills.push(b);
+  });
+
+  const iconColors=['#d4edda','#fde8cb','#d6e4f5','#f5d6e4','#e4d6f5','#f5f0d6'];
+  const iconTCs=['#1a5c32','#7a3e00','#1a3a6b','#7a1a46','#3d1a7a','#5c4a00'];
+
+  document.getElementById('allbills-list').innerHTML = Object.entries(groups).map(([key,g])=>`
+    <div style="font-size:12px;font-weight:600;color:var(--text-3);margin:12px 0 8px;letter-spacing:0.5px;text-transform:uppercase;">${g.label}</div>
+    ${g.bills.map((b,i)=>{
+      const ci=i%iconColors.length;
+      return `<div class="sales-bill-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:10px;">
+        <div style="display:flex;gap:12px;align-items:center;">
+          <div class="sales-bill-icon" style="background:${iconColors[ci]};color:${iconTCs[ci]};"><i class="ti ti-receipt" style="font-size:18px;"></i></div>
+          <div class="sales-bill-info">
+            <div class="sales-bill-top"><span class="sales-bill-no">${b.billNo}</span><span class="sales-bill-time">${formatTime(b.date)}</span></div>
+            <div class="sales-bill-name">${b.custName}</div>
+            <div class="sales-bill-items">${b.items.map(it=>`${it.name} (${it.qty})`).join(' · ')}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;"><div class="sales-bill-amount">${fmtRupee(b.total)}</div></div>
+        </div>
+        <div class="sales-bill-actions">
+          <button class="sales-action-btn" onclick="viewBillDetail('${b.id}')"><i class="ti ti-eye" style="font-size:14px;"></i> View</button>
+          <button class="sales-action-btn primary" onclick="reprintBill('${b.id}')"><i class="ti ti-printer" style="font-size:14px;"></i> Print</button>
+          <button class="sales-action-btn danger" onclick="deleteBill('${b.id}')"><i class="ti ti-trash" style="font-size:14px;"></i> Delete</button>
+        </div>
+      </div>`;
+    }).join('')}
+  `).join('');
+};
+
+// ── FIX 5: Delete from preview ──
+window.deleteCurrentBill = async function() {
+  const id = window._viewingBillId;
+  if (!id) { showToast('No bill to delete'); return; }
+  if (!confirm('Delete this bill? This cannot be undone.')) return;
+  await deleteDoc(doc(db,'users',currentUser.uid,'bills',id));
+  window._viewingBillId = null;
+  showToast('Bill deleted');
+  goBack();
+};
+
+// ── FIX 6: WhatsApp Share ──
+window.shareWhatsApp = function() {
+  const paper = document.getElementById('bill-paper-content');
+  if (!paper) return;
+  // Build text summary of bill
+  const billNo = paper.querySelector('.bill-no')?.textContent || '';
+  const custName = paper.querySelector('.bill-customer-box strong')?.textContent || '';
+  const total = paper.querySelector('.bill-grand-total span:last-child')?.textContent || '';
+  const items = [...paper.querySelectorAll('.bill-table tbody tr')].map(tr=>{
+    const cells = tr.querySelectorAll('td');
+    return `• ${cells[0]?.textContent} ${cells[1]?.textContent} x${cells[2]?.textContent} = ${cells[4]?.textContent}`;
+  }).join('
+');
+  const msg = `🧡 *GharsSeh Bill*
+Bill No: ${billNo}
+Customer: ${custName}
+
+${items}
+
+*Total: ${total}*
+
+_GharsSeh — Homemade With Love, Guwahati_`;
+  const url = 'https://wa.me/?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
 };
 
 // ── Click outside to close search ──
