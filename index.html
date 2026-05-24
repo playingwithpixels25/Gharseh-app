@@ -264,7 +264,18 @@
   .user-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;}
   .user-name{font-size:12px;font-weight:500;color:var(--text);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-  /* Print - A6 quarter A4 */
+  .pay-mode-btn{flex:1;height:40px;border-radius:var(--radius-xs);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:13px;font-weight:500;color:var(--text-2);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;}
+  .pay-mode-btn.active{border-color:var(--green);background:var(--green-light);color:var(--green);font-weight:600;}
+
+  /* Stock badge */
+  .stock-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:30px;margin-top:4px;}
+  .stock-badge.ok{background:var(--green-light);color:var(--green);}
+  .stock-badge.low{background:#fff3cd;color:#856404;}
+  .stock-badge.out{background:var(--red-light);color:var(--red);}
+
+  /* Stock input in add product */
+  .stock-row{display:flex;gap:8px;align-items:center;margin-top:6px;}
+  .stock-input{width:100px;height:40px;padding:0 12px;border-radius:var(--radius-xs);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:14px;color:var(--text);}
   @media print {
     body * { visibility: hidden; }
     #printable-bill, #printable-bill * { visibility: visible; }
@@ -397,6 +408,17 @@
           <div class="form-label"><i class="ti ti-notes"></i> Notes <span style="font-size:11px;color:var(--text-3);font-weight:400;">(optional)</span></div>
           <textarea class="form-textarea" id="pnotes" rows="3" placeholder="Any special notes about this product..."></textarea>
         </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <div class="form-label"><i class="ti ti-package"></i> Stock Quantity <span style="font-size:11px;color:var(--text-3);font-weight:400;">(total units available)</span></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input class="form-input stock-input" id="pstock" type="number" min="0" placeholder="e.g. 50" style="width:120px;" />
+            <span style="font-size:13px;color:var(--text-3);">units</span>
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="pout-of-stock" style="width:16px;height:16px;accent-color:var(--red);" />
+            <label for="pout-of-stock" style="font-size:13px;color:var(--red);font-weight:500;cursor:pointer;">Mark as Out of Stock</label>
+          </div>
+        </div>
       </div>
       <button class="save-btn" id="save-product-btn" onclick="saveProduct()"><i class="ti ti-device-floppy"></i> Save Product</button>
     </div>
@@ -457,6 +479,20 @@
         <div class="total-row"><span>Subtotal</span><span id="bill-subtotal">₹0.00</span></div>
         <div class="total-row discount" id="discount-row" style="display:none;"><span>Discount</span><span id="bill-discount">-₹0.00</span></div>
         <div class="total-row grand"><span>Grand Total</span><span id="bill-total">₹0.00</span></div>
+      </div>
+      <!-- Payment Mode -->
+      <div class="discount-section" style="margin-bottom:14px;">
+        <div class="discount-label"><i class="ti ti-wallet"></i> Payment Mode</div>
+        <div style="display:flex;gap:8px;">
+          <button class="pay-mode-btn active" id="pay-upi" onclick="setPayMode('upi')"><i class="ti ti-qrcode"></i> UPI</button>
+          <button class="pay-mode-btn" id="pay-cash" onclick="setPayMode('cash')"><i class="ti ti-cash"></i> Cash</button>
+          <button class="pay-mode-btn" id="pay-credit" onclick="setPayMode('credit')"><i class="ti ti-clock-dollar"></i> Credit</button>
+        </div>
+      </div>
+      <!-- Bill Notes -->
+      <div class="discount-section" style="margin-bottom:14px;">
+        <div class="discount-label"><i class="ti ti-notes"></i> Notes <span style="font-size:11px;color:var(--text-3);font-weight:400;">(optional)</span></div>
+        <textarea id="bill-notes" rows="2" placeholder="e.g. Delivered at home, partial payment pending..." oninput="saveDraft()" style="width:100%;padding:10px 14px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:13px;color:var(--text);resize:none;line-height:1.5;"></textarea>
       </div>
       <button class="preview-btn" onclick="previewBill()"><i class="ti ti-eye"></i> Preview Bill →</button>
       <p class="preview-hint"><i class="ti ti-shield-check" style="font-size:13px;"></i> You can preview and edit before printing</p>
@@ -567,6 +603,13 @@ let products = [];
 let bills = [];
 let billItems = [];
 let discountType = 'flat';
+let paymentMode = 'upi';
+
+window.setPayMode = function(mode) {
+  paymentMode = mode;
+  ['upi','cash','credit'].forEach(m => document.getElementById('pay-'+m)?.classList.toggle('active', m===mode));
+  saveDraft();
+};
 let editingProductId = null;
 let screenStack = ['login'];
 let currentBillId = null;
@@ -787,19 +830,29 @@ function renderProducts() {
   const el=document.getElementById('products-list');
   if (!products.length) { el.innerHTML=`<div class="empty-state"><i class="ti ti-package-off"></i><p>No products yet.<br>Tap <strong>Add New Product</strong> below.</p></div>`; return; }
   if (!filtered.length) { el.innerHTML=`<div class="empty-state"><i class="ti ti-search-off"></i><p>No products match.</p></div>`; return; }
-  el.innerHTML=filtered.map(p=>`
+  el.innerHTML=filtered.map(p=>{
+    let stockBadge = '';
+    if (p.outOfStock) stockBadge = `<span class="stock-badge out"><i class="ti ti-alert-circle" style="font-size:11px;"></i> Out of Stock</span>`;
+    else if (p.stockQty !== null && p.stockQty !== undefined) {
+      if (p.stockQty === 0) stockBadge = `<span class="stock-badge out"><i class="ti ti-alert-circle" style="font-size:11px;"></i> Out of Stock</span>`;
+      else if (p.stockQty <= 5) stockBadge = `<span class="stock-badge low"><i class="ti ti-alert-triangle" style="font-size:11px;"></i> Low Stock: ${p.stockQty} left</span>`;
+      else stockBadge = `<span class="stock-badge ok"><i class="ti ti-check" style="font-size:11px;"></i> In Stock: ${p.stockQty}</span>`;
+    }
+    return `
     <div class="product-card">
       <div class="product-img">${productEmoji(p.category)}</div>
       <div class="product-info">
         <div class="product-name">${p.name}</div>
         <div class="product-variants-count">${p.variants.length} variant${p.variants.length!==1?'s':''}</div>
         <div class="variant-pills">${p.variants.map(v=>`<div class="vpill"><strong>${v.label}</strong>${fmtRupee(v.price)}</div>`).join('')}</div>
+        ${stockBadge}
       </div>
       <div class="product-actions">
         <button class="icon-btn" onclick="openAddProduct('${p.id}')"><i class="ti ti-pencil"></i></button>
         <button class="icon-btn danger" onclick="deleteProduct('${p.id}')"><i class="ti ti-trash"></i></button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 window.deleteProduct = async function(id) {
@@ -818,12 +871,16 @@ window.openAddProduct = function(id) {
     document.getElementById('pname').value = p.name;
     document.getElementById('pcategory').value = p.category;
     document.getElementById('pnotes').value = p.notes||'';
+    document.getElementById('pstock').value = p.stockQty ?? '';
+    document.getElementById('pout-of-stock').checked = p.outOfStock||false;
     variantRows.innerHTML='';
     p.variants.forEach(v=>addVariantRow(v.label,v.price));
   } else {
     document.getElementById('pname').value='';
     document.getElementById('pcategory').value='Pickle';
     document.getElementById('pnotes').value='';
+    document.getElementById('pstock').value='';
+    document.getElementById('pout-of-stock').checked=false;
     variantRows.innerHTML='';
     addVariantRow('','');
   }
@@ -855,7 +912,10 @@ window.saveProduct = async function() {
   if (!variants.length) { showToast('Add at least one variant'); return; }
   const btn = document.getElementById('save-product-btn');
   btn.textContent='Saving...'; btn.disabled=true;
-  const prod = { name, category:document.getElementById('pcategory').value, variants, notes:document.getElementById('pnotes').value.trim(), createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp() };
+  const stockVal = document.getElementById('pstock').value;
+  const stockQty = stockVal !== '' ? parseInt(stockVal) : null;
+  const outOfStock = document.getElementById('pout-of-stock').checked;
+  const prod = { name, category:document.getElementById('pcategory').value, variants, notes:document.getElementById('pnotes').value.trim(), stockQty, outOfStock, createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp() };
   const id = editingProductId || doc(collection(db,'users',currentUser.uid,'products')).id;
   await setDoc(doc(db,'users',currentUser.uid,'products',id), prod);
   showToast(editingProductId?'Product updated!':'Product saved!');
@@ -877,6 +937,9 @@ function initBillScreen() {
     document.getElementById('discount-val').value = draft.discountVal||'';
     document.getElementById('toggle-flat').classList.toggle('active', discountType==='flat');
     document.getElementById('toggle-pct').classList.toggle('active', discountType==='pct');
+    paymentMode = draft.paymentMode||'upi';
+    ['upi','cash','credit'].forEach(m=>document.getElementById('pay-'+m)?.classList.toggle('active',m===paymentMode));
+    document.getElementById('bill-notes').value = draft.notes||'';
   } else {
     document.getElementById('draft-banner').style.display='none';
     billItems=[];
@@ -884,8 +947,11 @@ function initBillScreen() {
     document.getElementById('cust-phone').value='';
     document.getElementById('discount-val').value='';
     discountType='flat';
+    paymentMode='upi';
     document.getElementById('toggle-flat').classList.add('active');
     document.getElementById('toggle-pct').classList.remove('active');
+    ['upi','cash','credit'].forEach(m=>document.getElementById('pay-'+m)?.classList.toggle('active',m==='upi'));
+    document.getElementById('bill-notes').value='';
   }
   document.getElementById('bill-search').value='';
   document.getElementById('bill-search-results').classList.remove('show');
@@ -899,7 +965,9 @@ function saveDraft() {
     custName: document.getElementById('cust-name')?.value||'',
     custPhone: document.getElementById('cust-phone')?.value||'',
     discountType,
-    discountVal: document.getElementById('discount-val')?.value||''
+    discountVal: document.getElementById('discount-val')?.value||'',
+    paymentMode,
+    notes: document.getElementById('bill-notes')?.value||''
   };
   localStorage.setItem('gs_draft', JSON.stringify(draft));
 }
@@ -916,13 +984,23 @@ window.searchBillProducts = function() {
   if (!products.length) { res.innerHTML='<div style="padding:14px;font-size:13px;color:var(--text-3);text-align:center;">No products added yet.</div>'; res.classList.add('show'); return; }
   const filtered=q?products.filter(p=>p.name.toLowerCase().includes(q)):products;
   if (!filtered.length) { res.classList.remove('show'); return; }
-  res.innerHTML=filtered.map(p=>`<div class="search-result-item" onclick="addBillItem('${p.id}')"><div><div class="sname">${productEmoji(p.category)} ${p.name}</div><div class="svariants">${p.variants.map(v=>`${v.label} ${fmtRupee(v.price)}`).join(' · ')}</div></div><i class="ti ti-circle-plus"></i></div>`).join('');
+  res.innerHTML=filtered.map(p=>{
+    const oos = p.outOfStock || p.stockQty === 0;
+    return `<div class="search-result-item" onclick="addBillItem('${p.id}')" style="${oos?'opacity:0.5;':''}">
+      <div>
+        <div class="sname">${productEmoji(p.category)} ${p.name}${oos?` <span style="font-size:10px;color:var(--red);font-weight:600;">OUT OF STOCK</span>`:''}</div>
+        <div class="svariants">${p.variants.map(v=>`${v.label} ${fmtRupee(v.price)}`).join(' · ')}</div>
+      </div>
+      <i class="ti ti-circle-plus"></i>
+    </div>`;
+  }).join('');
   res.classList.add('show');
 };
 
 window.addBillItem = function(productId) {
   const p=products.find(x=>x.id===productId);
   if (!p) return;
+  if (p.outOfStock || p.stockQty === 0) { showToast(`${p.name} is out of stock`); return; }
   billItems.push({productId,productName:p.name,category:p.category,variantIdx:0,qty:1,variants:p.variants});
   document.getElementById('bill-search').value='';
   document.getElementById('bill-search-results').classList.remove('show');
@@ -1014,11 +1092,22 @@ window.previewBill = async function() {
     billNo, custName, custPhone,
     items: billItems.map(item=>({ name:item.productName, variant:item.variants[item.variantIdx].label, qty:item.qty, price:item.variants[item.variantIdx].price })),
     subtotal:sub, discount:disc, discountType, discountVal:dv, total,
+    paymentMode, notes: document.getElementById('bill-notes').value.trim(),
     date: now.toISOString(),
     createdAt: serverTimestamp()
   };
 
   await setDoc(doc(db,'users',currentUser.uid,'bills',billId), billData);
+
+  // Deduct stock for each product in the bill
+  for (const item of billItems) {
+    const prod = products.find(p=>p.name===item.productName);
+    if (prod && prod.stockQty !== null && prod.stockQty !== undefined && !prod.outOfStock) {
+      const newQty = Math.max(0, prod.stockQty - item.qty);
+      await setDoc(doc(db,'users',currentUser.uid,'products',prod.id), { ...prod, stockQty: newQty, outOfStock: newQty === 0 }, { merge: true });
+    }
+  }
+
   clearDraft();
   currentBillId = null;
   window._viewingBillId = billId;
@@ -1058,6 +1147,13 @@ function renderBillContent(b) {
       ${b.discount>0?`<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;color:var(--red);font-weight:500;"><span>Discount</span><span>-${fmtRupee(b.discount)}</span></div>`:''}
     </div>
     <div class="bill-grand-total"><span>Grand Total</span><span>${fmtRupee(b.total)}</span></div>
+    ${(b.paymentMode||b.notes)?`<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      ${b.paymentMode?`<span style="display:inline-flex;align-items:center;gap:4px;background:var(--green-light);color:var(--green);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">
+        <i class="ti ti-${b.paymentMode==='upi'?'qrcode':b.paymentMode==='cash'?'cash':'clock-dollar'}" style="font-size:13px;"></i> 
+        ${b.paymentMode.toUpperCase()}
+      </span>`:''}
+      ${b.notes?`<span style="font-size:11px;color:var(--text-3);font-style:italic;">${b.notes}</span>`:''}
+    </div>`:''}
     <div class="bill-divider"></div>
     <div class="bill-footer">
       <div class="bill-footer-main">Thank you for supporting us. ❤️</div>
@@ -1198,6 +1294,9 @@ window.editCurrentBill = function() {
         discountType = b.discountType||'flat';
         document.getElementById('toggle-flat').classList.toggle('active', discountType==='flat');
         document.getElementById('toggle-pct').classList.toggle('active', discountType==='pct');
+        paymentMode = b.paymentMode||'upi';
+        ['upi','cash','credit'].forEach(m=>document.getElementById('pay-'+m)?.classList.toggle('active',m===paymentMode));
+        document.getElementById('bill-notes').value = b.notes||'';
         document.getElementById('draft-banner').style.display='none';
         document.getElementById('bill-search').value='';
         document.getElementById('bill-search-results').classList.remove('show');
