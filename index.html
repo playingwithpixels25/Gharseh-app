@@ -1494,8 +1494,8 @@ window.shareWhatsApp = function() {
 function buildCustomerMap() {
   const map = {};
   bills.forEach(b => {
-    const phone = (b.customerPhone||'').trim();
-    const name = (b.customerName||'Unknown').trim();
+    const phone = (b.custPhone||'').trim();
+    const name = (b.custName||'Unknown').trim();
     if (!phone) return;
     if (!map[phone]) map[phone] = { name, phone, bills:[], total:0 };
     map[phone].bills.push(b);
@@ -1629,7 +1629,7 @@ window.renderReport = function() {
   // Summary stats
   const totalRev = monthBills.reduce((s,b)=>s+(b.total||0),0);
   const totalBills = monthBills.length;
-  const uniqueCusts = new Set(monthBills.map(b=>b.customerPhone||b.customerName)).size;
+  const uniqueCusts = new Set(monthBills.map(b=>b.custPhone||b.custName)).size;
   document.getElementById('report-stats').innerHTML = `
     <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalRev)}</div><div class="report-stat-lbl">Revenue</div></div>
     <div class="report-stat"><div class="report-stat-val">${totalBills}</div><div class="report-stat-lbl">Bills</div></div>
