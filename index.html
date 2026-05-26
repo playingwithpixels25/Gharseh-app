@@ -1216,13 +1216,14 @@ window.previewBill = async function() {
   }
 
   const now = new Date();
+  const existingBill = bills.find(b=>b.id===billId);
   const billData = {
     billNo, custName, custPhone,
     items: billItems.map(item=>({ name:item.productName, variant:item.variants[item.variantIdx].label, qty:item.qty, price:item.variants[item.variantIdx].price })),
     subtotal:sub, discount:disc, discountType, discountVal:dv, total,
     paymentMode, notes: document.getElementById('bill-notes').value.trim(),
-    date: now.toISOString(),
-    createdAt: serverTimestamp()
+    date: existingBill?.date || now.toISOString(),
+    createdAt: existingBill?.createdAt || serverTimestamp()
   };
 
   await setDoc(doc(db,'users',currentUser.uid,'bills',billId), billData);
