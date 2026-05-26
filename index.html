@@ -160,7 +160,7 @@
   .variants-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
   .variants-hint{font-size:11px;color:var(--gold);font-weight:500;}
   .variant-row{background:var(--cream);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-end;border:1px solid var(--border-light);}
-  .variant-fields{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .variant-fields{flex:1;display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;}
   .variant-field label{font-size:11px;color:var(--text-3);display:block;margin-bottom:4px;}
   .variant-field input{width:100%;height:40px;padding:0 12px;border-radius:var(--radius-xs);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:14px;color:var(--text);}
   .variant-field input:focus{outline:none;border-color:var(--green);}
@@ -426,7 +426,7 @@
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <div class="variants-header">
-            <div class="form-label" style="margin-bottom:0;"><i class="ti ti-box-multiple"></i> Variants <span style="font-size:11px;color:var(--text-3);font-weight:400;">(sizes & prices)</span></div>
+            <div class="form-label" style="margin-bottom:0;"><i class="ti ti-box-multiple"></i> Variants <span style="font-size:11px;color:var(--text-3);font-weight:400;">(size · price · stock)</span></div>
             <span class="variants-hint">Add all sizes here ↩</span>
           </div>
           <div id="variant-rows" style="margin-top:8px;"></div>
@@ -437,14 +437,9 @@
           <textarea class="form-textarea" id="pnotes" rows="3" placeholder="Any special notes about this product..."></textarea>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <div class="form-label"><i class="ti ti-package"></i> Stock Quantity <span style="font-size:11px;color:var(--text-3);font-weight:400;">(total units available)</span></div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <input class="form-input stock-input" id="pstock" type="number" min="0" placeholder="e.g. 50" style="width:120px;" />
-            <span style="font-size:13px;color:var(--text-3);">units</span>
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-            <input type="checkbox" id="pout-of-stock" style="width:16px;height:16px;accent-color:var(--red);" />
-            <label for="pout-of-stock" style="font-size:13px;color:var(--red);font-weight:500;cursor:pointer;">Mark as Out of Stock</label>
+          <div style="background:var(--green-light);border-radius:var(--radius-xs);padding:10px 12px;font-size:12px;color:var(--green-dark);display:flex;align-items:flex-start;gap:8px;">
+            <i class="ti ti-info-circle" style="font-size:16px;color:var(--green);flex-shrink:0;margin-top:1px;"></i>
+            <span>Stock is tracked <strong>per variant</strong>. Enter stock count in the <strong>Stock</strong> column above. Leave blank for unlimited stock.</span>
           </div>
         </div>
       </div>
@@ -916,21 +911,23 @@ function renderProducts() {
   if (!products.length) { el.innerHTML=`<div class="empty-state"><i class="ti ti-package-off"></i><p>No products yet.<br>Tap <strong>Add New Product</strong> below.</p></div>`; return; }
   if (!filtered.length) { el.innerHTML=`<div class="empty-state"><i class="ti ti-search-off"></i><p>No products match.</p></div>`; return; }
   el.innerHTML=filtered.map(p=>{
-    let stockBadge = '';
-    if (p.outOfStock) stockBadge = `<span class="stock-badge out"><i class="ti ti-alert-circle" style="font-size:11px;"></i> Out of Stock</span>`;
-    else if (p.stockQty !== null && p.stockQty !== undefined) {
-      if (p.stockQty === 0) stockBadge = `<span class="stock-badge out"><i class="ti ti-alert-circle" style="font-size:11px;"></i> Out of Stock</span>`;
-      else if (p.stockQty <= 5) stockBadge = `<span class="stock-badge low"><i class="ti ti-alert-triangle" style="font-size:11px;"></i> Low Stock: ${p.stockQty} left</span>`;
-      else stockBadge = `<span class="stock-badge ok"><i class="ti ti-check" style="font-size:11px;"></i> In Stock: ${p.stockQty}</span>`;
-    }
+    const variantPills = p.variants.map(v=>{
+      let stockPart = '';
+      if (v.stock !== null && v.stock !== undefined) {
+        if (v.stock < 0) stockPart = `<span style="font-size:9px;background:#fdecea;color:#c0392b;border-radius:4px;padding:1px 4px;margin-left:3px;">−${Math.abs(v.stock)} over</span>`;
+        else if (v.stock === 0) stockPart = `<span style="font-size:9px;background:var(--red-light);color:var(--red);border-radius:4px;padding:1px 4px;margin-left:3px;">OOS</span>`;
+        else if (v.stock <= 5) stockPart = `<span style="font-size:9px;background:#fff3cd;color:#856404;border-radius:4px;padding:1px 4px;margin-left:3px;">${v.stock} left</span>`;
+        else stockPart = `<span style="font-size:9px;background:var(--green-light);color:var(--green);border-radius:4px;padding:1px 4px;margin-left:3px;">${v.stock}</span>`;
+      }
+      return `<div class="vpill"><strong>${v.label}</strong>${fmtRupee(v.price)}${stockPart}</div>`;
+    }).join('');
     return `
     <div class="product-card">
       <div class="product-img">${productEmoji(p.category)}</div>
       <div class="product-info">
         <div class="product-name">${p.name}</div>
         <div class="product-variants-count">${p.variants.length} variant${p.variants.length!==1?'s':''}</div>
-        <div class="variant-pills">${p.variants.map(v=>`<div class="vpill"><strong>${v.label}</strong>${fmtRupee(v.price)}</div>`).join('')}</div>
-        ${stockBadge}
+        <div class="variant-pills">${variantPills}</div>
       </div>
       <div class="product-actions">
         <button class="icon-btn" onclick="openAddProduct('${p.id}')"><i class="ti ti-pencil"></i></button>
@@ -956,29 +953,26 @@ window.openAddProduct = function(id) {
     document.getElementById('pname').value = p.name;
     document.getElementById('pcategory').value = p.category;
     document.getElementById('pnotes').value = p.notes||'';
-    document.getElementById('pstock').value = p.stockQty ?? '';
-    document.getElementById('pout-of-stock').checked = p.outOfStock||false;
     variantRows.innerHTML='';
-    p.variants.forEach(v=>addVariantRow(v.label,v.price));
+    p.variants.forEach(v=>addVariantRow(v.label, v.price, v.stock ?? ''));
   } else {
     document.getElementById('pname').value='';
     document.getElementById('pcategory').value='Pickle';
     document.getElementById('pnotes').value='';
-    document.getElementById('pstock').value='';
-    document.getElementById('pout-of-stock').checked=false;
     variantRows.innerHTML='';
     addVariantRow('','');
   }
   goTo('add-product');
 };
 
-window.addVariantRow = function(label='',price='') {
+window.addVariantRow = function(label='',price='',stock='') {
   const el=document.createElement('div');
   el.className='variant-row';
   el.innerHTML=`<span class="ti ti-grip-vertical" style="color:var(--text-3);font-size:18px;cursor:grab;padding:4px 0;"></span>
     <div class="variant-fields">
       <div class="variant-field"><label>Label (e.g. 200g)</label><input class="v-label" value="${label}" placeholder="e.g. 500g" /></div>
       <div class="variant-field"><label>Price (₹)</label><input class="v-price" type="number" value="${price}" placeholder="0" min="0" /></div>
+      <div class="variant-field"><label>Stock</label><input class="v-stock" type="number" value="${stock}" placeholder="—" min="0" /></div>
     </div>
     <button class="icon-btn danger" onclick="this.parentElement.remove()" style="flex-shrink:0;margin-bottom:2px;"><i class="ti ti-trash"></i></button>`;
   document.getElementById('variant-rows').appendChild(el);
@@ -992,15 +986,14 @@ window.saveProduct = async function() {
   rows.forEach(r=>{
     const lbl=r.querySelector('.v-label').value.trim();
     const pr=parseFloat(r.querySelector('.v-price').value);
-    if (lbl&&!isNaN(pr)&&pr>=0) variants.push({label:lbl,price:pr});
+    const stVal=r.querySelector('.v-stock').value;
+    const stock = stVal !== '' ? parseInt(stVal) : null;
+    if (lbl&&!isNaN(pr)&&pr>=0) variants.push({label:lbl, price:pr, stock});
   });
   if (!variants.length) { showToast('Add at least one variant'); return; }
   const btn = document.getElementById('save-product-btn');
   btn.textContent='Saving...'; btn.disabled=true;
-  const stockVal = document.getElementById('pstock').value;
-  const stockQty = stockVal !== '' ? parseInt(stockVal) : null;
-  const outOfStock = document.getElementById('pout-of-stock').checked;
-  const prod = { name, category:document.getElementById('pcategory').value, variants, notes:document.getElementById('pnotes').value.trim(), stockQty, outOfStock, createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp() };
+  const prod = { name, category:document.getElementById('pcategory').value, variants, notes:document.getElementById('pnotes').value.trim(), createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp() };
   const id = editingProductId || doc(collection(db,'users',currentUser.uid,'products')).id;
   await setDoc(doc(db,'users',currentUser.uid,'products',id), prod);
   showToast(editingProductId?'Product updated!':'Product saved!');
@@ -1070,11 +1063,14 @@ window.searchBillProducts = function() {
   const filtered=q?products.filter(p=>p.name.toLowerCase().includes(q)):products;
   if (!filtered.length) { res.classList.remove('show'); return; }
   res.innerHTML=filtered.map(p=>{
-    const oos = p.outOfStock || p.stockQty === 0;
-    return `<div class="search-result-item" onclick="addBillItem('${p.id}')" style="${oos?'opacity:0.5;':''}">
+    const allOOS = p.variants.every(v => v.stock !== null && v.stock !== undefined && v.stock <= 0);
+    return `<div class="search-result-item" onclick="addBillItem('${p.id}')" style="${allOOS?'opacity:0.5;':''}">
       <div>
-        <div class="sname">${productEmoji(p.category)} ${p.name}${oos?` <span style="font-size:10px;color:var(--red);font-weight:600;">OUT OF STOCK</span>`:''}</div>
-        <div class="svariants">${p.variants.map(v=>`${v.label} ${fmtRupee(v.price)}`).join(' · ')}</div>
+        <div class="sname">${productEmoji(p.category)} ${p.name}${allOOS?` <span style="font-size:10px;color:var(--red);font-weight:600;">ALL OUT OF STOCK</span>`:''}</div>
+        <div class="svariants">${p.variants.map(v=>{
+          const oos = v.stock !== null && v.stock !== undefined && v.stock <= 0;
+          return `${v.label} ${fmtRupee(v.price)}${oos?' (OOS)':''}`;
+        }).join(' · ')}</div>
       </div>
       <i class="ti ti-circle-plus"></i>
     </div>`;
@@ -1085,8 +1081,11 @@ window.searchBillProducts = function() {
 window.addBillItem = function(productId) {
   const p=products.find(x=>x.id===productId);
   if (!p) return;
-  if (p.outOfStock || p.stockQty === 0) { showToast(`${p.name} is out of stock`); return; }
-  billItems.push({productId,productName:p.name,category:p.category,variantIdx:0,qty:1,variants:p.variants});
+  const allOOS = p.variants.every(v => v.stock !== null && v.stock !== undefined && v.stock <= 0);
+  if (allOOS) { showToast(`${p.name} — all variants are out of stock`); return; }
+  // Pick first in-stock variant (or first variant if none have stock tracking)
+  const firstAvailIdx = p.variants.findIndex(v => !(v.stock !== null && v.stock !== undefined && v.stock <= 0));
+  billItems.push({productId, productName:p.name, category:p.category, variantIdx:firstAvailIdx>=0?firstAvailIdx:0, qty:1, variants:p.variants});
   document.getElementById('bill-search').value='';
   document.getElementById('bill-search-results').classList.remove('show');
   renderBillItems();
@@ -1100,16 +1099,33 @@ function renderBillItems() {
   } else {
     el.innerHTML=billItems.map((item,i)=>{
       const v=item.variants[item.variantIdx];
+      const vStock = (v.stock !== null && v.stock !== undefined) ? v.stock : null;
+      const vOOS = vStock !== null && vStock <= 0;
+      const overStock = vStock !== null && vStock > 0 && item.qty > vStock;
       const lineTotal=v.price*item.qty;
-      return `<div class="added-item-card">
+      const stockNote = vStock !== null
+        ? (vStock <= 0
+            ? `<span style="font-size:10px;color:var(--red);font-weight:600;margin-left:4px;">OUT OF STOCK</span>`
+            : vStock <= 5
+              ? `<span style="font-size:10px;color:#856404;margin-left:4px;">Only ${vStock} left</span>`
+              : ``)
+        : '';
+      const cardStyle = vOOS ? ' style="border-color:#f5c6c6;background:#fff8f8;"' : overStock ? ' style="border-color:#ffe0b2;background:#fffaf5;"' : '';
+      return `<div class="added-item-card"${cardStyle}>
         <div class="added-item-top">
           <div class="added-item-img">${productEmoji(item.category)}</div>
-          <div class="added-item-name"><strong>${item.productName}</strong><span>${v.label}</span></div>
+          <div class="added-item-name"><strong>${item.productName}</strong><span>${v.label}${stockNote}</span></div>
           <button class="added-item-remove" onclick="removeBillItem(${i})"><i class="ti ti-x" style="font-size:14px;"></i></button>
         </div>
+        ${overStock?`<div style="font-size:11px;color:#e65100;padding:0 0 6px 0;"><i class="ti ti-alert-triangle" style="font-size:11px;"></i> Only ${vStock} in stock — reduce qty before saving</div>`:''}
         <div class="added-item-bottom">
           <div class="variant-select-wrap" style="flex:1.5;">
-            <select onchange="changeVariant(${i},this.value)">${item.variants.map((vv,vi)=>`<option value="${vi}" ${vi===item.variantIdx?'selected':''}>${vv.label} — ${fmtRupee(vv.price)}</option>`).join('')}</select>
+            <select onchange="changeVariant(${i},this.value)">${item.variants.map((vv,vi)=>{
+              const vvStock = (vv.stock !== null && vv.stock !== undefined) ? vv.stock : null;
+              const isOOS = vvStock !== null && vvStock <= 0;
+              const stockLabel = vvStock !== null ? (isOOS ? ' (OOS)' : vvStock <= 5 ? ` (${vvStock} left)` : '') : '';
+              return `<option value="${vi}" ${vi===item.variantIdx?'selected':''} ${isOOS?'disabled':''}>${vv.label} — ${fmtRupee(vv.price)}${stockLabel}</option>`;
+            }).join('')}</select>
           </div>
           <div class="qty-stepper">
             <button class="qty-btn" onclick="changeQty(${i},-1)"><i class="ti ti-minus" style="font-size:14px;"></i></button>
@@ -1126,7 +1142,20 @@ function renderBillItems() {
 
 window.removeBillItem = function(i) { billItems.splice(i,1); renderBillItems(); saveDraft(); };
 window.changeVariant = function(i,vi) { billItems[i].variantIdx=parseInt(vi); renderBillItems(); saveDraft(); };
-window.changeQty = function(i,delta) { billItems[i].qty=Math.max(1,billItems[i].qty+delta); renderBillItems(); saveDraft(); };
+window.changeQty = function(i,delta) {
+  const item = billItems[i];
+  const v = item.variants[item.variantIdx];
+  const vStock = (v.stock !== null && v.stock !== undefined) ? v.stock : null;
+  const newQty = Math.max(1, item.qty + delta);
+  if (delta > 0 && vStock !== null && newQty > vStock) {
+    showToast(`Only ${vStock} in stock for ${v.label}`);
+    // Still allow (show warning) but cap at stock
+    item.qty = vStock;
+  } else {
+    item.qty = newQty;
+  }
+  renderBillItems(); saveDraft();
+};
 window.setDiscountType = function(t) { discountType=t; document.getElementById('toggle-flat').classList.toggle('active',t==='flat'); document.getElementById('toggle-pct').classList.toggle('active',t==='pct'); recalc(); saveDraft(); };
 
 function recalc() {
@@ -1151,6 +1180,20 @@ window.previewBill = async function() {
   const _cp = document.getElementById('cust-phone').value.trim();
   if (!_cn) { showToast('Please enter customer name'); document.getElementById('cust-name').focus(); return; }
   if (!_cp) { showToast('Please enter phone number'); document.getElementById('cust-phone').focus(); return; }
+
+  // Block if any selected variant is OOS or qty exceeds stock
+  for (const item of billItems) {
+    const v = item.variants[item.variantIdx];
+    const vStock = (v.stock !== null && v.stock !== undefined) ? v.stock : null;
+    if (vStock !== null && vStock <= 0) {
+      showToast(`${item.productName} (${v.label}) is out of stock — remove it or change variant`);
+      return;
+    }
+    if (vStock !== null && item.qty > vStock) {
+      showToast(`${item.productName} (${v.label}): only ${vStock} in stock, qty is ${item.qty}`);
+      return;
+    }
+  }
   const sub=billItems.reduce((s,item)=>s+item.variants[item.variantIdx].price*item.qty,0);
   const dv=parseFloat(document.getElementById('discount-val')?.value||'0')||0;
   let disc=0;
@@ -1184,13 +1227,18 @@ window.previewBill = async function() {
 
   await setDoc(doc(db,'users',currentUser.uid,'bills',billId), billData);
 
-  // Deduct stock for each product in the bill
+  // Deduct stock per variant sold
   for (const item of billItems) {
     const prod = products.find(p=>p.name===item.productName);
-    if (prod && prod.stockQty !== null && prod.stockQty !== undefined && !prod.outOfStock) {
-      const newQty = Math.max(0, prod.stockQty - item.qty);
-      await setDoc(doc(db,'users',currentUser.uid,'products',prod.id), { ...prod, stockQty: newQty, outOfStock: newQty === 0 }, { merge: true });
-    }
+    if (!prod) continue;
+    const soldLabel = item.variants[item.variantIdx].label;
+    const updatedVariants = prod.variants.map(v => {
+      if (v.label === soldLabel && v.stock !== null && v.stock !== undefined) {
+        return { ...v, stock: v.stock - item.qty };  // allow negative so it shows in products
+      }
+      return v;
+    });
+    await setDoc(doc(db,'users',currentUser.uid,'products',prod.id), { ...prod, variants: updatedVariants }, { merge: true });
   }
 
   clearDraft();
