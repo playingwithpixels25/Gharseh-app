@@ -1684,18 +1684,36 @@ window.shareWhatsApp = function() {
 // ── Customer Directory ──
 function buildCustomerMap() {
   const map = {};
+
+  // From billing bills
   bills.forEach(b => {
     const phone = (b.custPhone||'').trim();
     const name = (b.custName||'Unknown').trim();
     if (!phone) return;
-    if (!map[phone]) map[phone] = { name, phone, bills:[], total:0 };
+    if (!map[phone]) map[phone] = { name, phone, bills:[], orders:[], total:0, source:'billing' };
     map[phone].bills.push(b);
     map[phone].total += b.total||0;
-    // Keep most recent name
     const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date||b.createdAt);
     const existing = map[phone]._lastDate;
     if (!existing || bDate > existing) { map[phone].name = name; map[phone]._lastDate = bDate; }
   });
+
+  // From shop orders (online customers)
+  shopOrders.forEach(o => {
+    const phone = (o.customerPhone||'').trim();
+    const name = (o.customerName||'Unknown').trim();
+    if (!phone) return;
+    if (!map[phone]) map[phone] = { name, phone, bills:[], orders:[], total:0, source:'shop' };
+    map[phone].orders.push(o);
+    map[phone].total += o.total||0;
+    const oDate = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt || 0);
+    const existing = map[phone]._lastDate;
+    if (!existing || oDate > existing) { map[phone].name = name; map[phone]._lastDate = oDate; }
+    // Track customer email & Google ID if available
+    if (o.customerEmail && !map[phone].email) map[phone].email = o.customerEmail;
+    if (o.customerId && !map[phone].customerId) map[phone].customerId = o.customerId;
+  });
+
   return Object.values(map).sort((a,b)=>b.total-a.total);
 }
 
@@ -1715,21 +1733,23 @@ window.renderCustomers = function() {
     return;
   }
   el.innerHTML = filtered.map(c => {
-    const isRepeat = c.bills.length >= 2;
-    const lastBill = c.bills.reduce((latest,b) => {
-      const d = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date||b.createdAt);
+    const totalTxns = c.bills.length + c.orders.length;
+    const isRepeat = totalTxns >= 2;
+    const isOnline = c.orders.length > 0;
+    const lastBill = [...c.bills, ...c.orders].reduce((latest,b) => {
+      const d = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date||b.createdAt||0);
       return d > latest ? d : latest;
     }, new Date(0));
     const av = avatarColor(c.name);
     return `<div class="customer-card" onclick="openCustomerDetail('${c.phone.replace(/'/g,"\\'")}')">
       <div class="cust-avatar" style="background:${av.bg};color:${av.color};">${initials(c.name)}</div>
       <div class="cust-info">
-        <div class="cust-name">${c.name}${isRepeat?`<span class="repeat-badge"><i class="ti ti-star-filled" style="font-size:9px;"></i> Regular</span>`:''}</div>
+        <div class="cust-name">${c.name}${isRepeat?`<span class="repeat-badge"><i class="ti ti-star-filled" style="font-size:9px;"></i> Regular</span>`:''}${isOnline?`<span class="repeat-badge" style="background:#e8f4ff;color:#1a6bb5;margin-left:4px;"><i class="ti ti-world" style="font-size:9px;"></i> Online</span>`:''}</div>
         <div class="cust-meta">${c.phone} · Last: ${formatDateShort(lastBill)}</div>
       </div>
       <div class="cust-stat">
         <div class="cust-total">${fmtRupee(c.total)}</div>
-        <div class="cust-bills">${c.bills.length} bill${c.bills.length!==1?'s':''}</div>
+        <div class="cust-bills">${totalTxns} order${totalTxns!==1?'s':''}</div>
       </div>
     </div>`;
   }).join('');
@@ -1743,30 +1763,42 @@ window.openCustomerDetail = function(phone) {
   document.getElementById('cdetail-name').textContent = c.name;
   document.getElementById('cdetail-phone').textContent = c.phone;
 
-  // Stats
-  const avgOrder = c.total / c.bills.length;
+  const totalTxns = c.bills.length + c.orders.length;
+  const avgOrder = c.total / Math.max(totalTxns, 1);
   const statsEl = document.getElementById('cdetail-stats');
   statsEl.innerHTML = `
     <div class="report-stat"><div class="report-stat-val">${fmtRupee(c.total)}</div><div class="report-stat-lbl">Total Spent</div></div>
-    <div class="report-stat"><div class="report-stat-val">${c.bills.length}</div><div class="report-stat-lbl">Bills</div></div>
+    <div class="report-stat"><div class="report-stat-val">${totalTxns}</div><div class="report-stat-lbl">Orders</div></div>
     <div class="report-stat"><div class="report-stat-val">${fmtRupee(avgOrder)}</div><div class="report-stat-lbl">Avg Order</div></div>
   `;
 
-  // Bill history
-  const sorted = [...c.bills].sort((a,b)=>{
-    const da = a.createdAt?.toDate?a.createdAt.toDate():new Date(a.date||a.createdAt);
-    const db2 = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
-    return db2-da;
-  });
+  // Merge bills and orders into a unified history
+  const allHistory = [
+    ...c.bills.map(b => ({ type:'bill', id:b.id, label: b.billNo||b.id, total: b.total||0, items: (b.items||[]).map(it=>`${it.name} ×${it.qty||1}`).join(', '), date: b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt), payMode: b.paymentMode||'UPI', status: null })),
+    ...c.orders.map(o => ({ type:'order', id:o.id, label:`#${o.id.slice(-6).toUpperCase()}`, total: o.total||0, items: (o.items||[]).map(it=>`${it.productName} ×${it.qty}`).join(', '), date: o.createdAt?.toDate?o.createdAt.toDate():new Date(o.createdAt||0), payMode:'Online', status: o.status }))
+  ].sort((a,b)=>b.date-a.date);
+
   const av = avatarColor(c.name);
-  document.getElementById('cdetail-bills').innerHTML = sorted.map(b=>{
-    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
-    return `<div class="bill-row" onclick="openBillPreview('${b.id}')">
+  const statusColors = { pending:'#fff3cd;color:#856404', confirmed:'#eaf3de;color:#2D5A27', complete:'#d1e7dd;color:#0a3622' };
+  const statusLabels = { pending:'⏳ Pending', confirmed:'✅ Confirmed', complete:'🎉 Done' };
+
+  document.getElementById('cdetail-bills').innerHTML = allHistory.map(entry => {
+    const typeTag = entry.type === 'order'
+      ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#e8f4ff;color:#1a6bb5;border-radius:20px;padding:2px 7px;font-size:10px;font-weight:600;margin-left:4px;"><i class="ti ti-world" style="font-size:9px;"></i> Online</span>`
+      : '';
+    const statusTag = entry.status
+      ? `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:${statusColors[entry.status]||statusColors.pending};">${statusLabels[entry.status]||'⏳ Pending'}</span>`
+      : '';
+    return `<div class="bill-row" onclick="${entry.type==='bill'?`openBillPreview('${entry.id}')`:`viewOrderDetail('${entry.id}')`}">
       <div class="bill-avatar" style="background:${av.bg};color:${av.color};">${initials(c.name)}</div>
-      <div class="bill-info"><strong>${b.billNo||b.id}</strong><span>${formatDateShort(d)} · ${formatTime(d)} · ${b.paymentMode||'UPI'}</span></div>
-      <div class="bill-amount">${fmtRupee(b.total||0)}</div>
+      <div class="bill-info">
+        <strong>${entry.label}${typeTag}${statusTag}</strong>
+        <span>${formatDateShort(entry.date)} · ${formatTime(entry.date)} · ${entry.payMode}</span>
+        <span style="display:block;font-size:10px;color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${entry.items}</span>
+      </div>
+      <div class="bill-amount">${fmtRupee(entry.total)}</div>
     </div>`;
-  }).join('') || `<div class="empty-state"><p>No bills found.</p></div>`;
+  }).join('') || `<div class="empty-state"><p>No orders found.</p></div>`;
 
   goTo('customer-detail');
 };
@@ -1921,6 +1953,7 @@ function loadShopOrders() {
       });
     updateOrdersBadge();
     if (document.getElementById('screen-orders').classList.contains('active')) renderOrders();
+    if (document.getElementById('screen-customers').classList.contains('active')) renderCustomers();
   });
 }
 
@@ -2025,9 +2058,35 @@ window.viewOrderDetail = function(id) {
 
 window.updateOrderStatus = async function(id, status) {
   try {
+    const order = shopOrders.find(o => o.id === id);
+    if (!order) { showToast('Order not found'); return; }
+    const prevStatus = order.status;
+
     await updateDoc(doc(db, 'users', currentUser.uid, 'orders', id), { status });
+
+    // Deduct stock when confirming an order (only from pending → confirmed/complete)
+    if (status === 'confirmed' && prevStatus === 'pending') {
+      try {
+        for (const item of (order.items || [])) {
+          const prod = products.find(p => p.id === item.productId || p.name === item.productName);
+          if (!prod) continue;
+          // Match variant by index first, fallback to name match
+          let variantIdx = item.variantIdx !== undefined ? item.variantIdx : prod.variants.findIndex(v => (v.label || v.name) === item.variant);
+          if (variantIdx < 0) variantIdx = 0;
+          const v = prod.variants[variantIdx];
+          if (!v || v.stock === undefined || v.stock === null || v.stock === '') continue;
+          const updatedVariants = prod.variants.map((variant, i) => {
+            if (i === variantIdx) return { ...variant, stock: Math.max(0, Number(variant.stock) - item.qty) };
+            return variant;
+          });
+          await setDoc(doc(db, 'users', currentUser.uid, 'products', prod.id), { ...prod, variants: updatedVariants }, { merge: true });
+        }
+      } catch(stockErr) {
+        console.error('Stock deduction on confirm failed:', stockErr);
+      }
+    }
+
     showToast('Order status updated!');
-    // Re-render detail view
     viewOrderDetail(id);
   } catch(e) {
     showToast('Failed to update status');
