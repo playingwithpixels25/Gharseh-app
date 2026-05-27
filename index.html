@@ -147,8 +147,11 @@
   .icon-btn i{font-size:16px;color:var(--text-2);}
   .add-product-btn{width:100%;height:52px;border-radius:var(--radius);border:2px dashed var(--green);background:var(--green-light);color:var(--green);font-family:var(--font);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-bottom:12px;}
 
-  /* Add Product */
-  .form-group{margin-bottom:18px;}
+  .img-upload-box{width:100%;height:120px;border-radius:var(--radius-sm);border:2px dashed var(--border);background:var(--cream);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;position:relative;overflow:hidden;}
+  .img-upload-box img{width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;}
+  .img-upload-box .upload-label{font-size:13px;color:var(--text-3);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;}
+  .img-upload-box input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .img-upload-box .remove-img{position:absolute;top:6px;right:6px;background:var(--red);color:white;border:none;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;font-size:13px;}
   .form-label{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
   .form-label i{font-size:16px;color:var(--gold);}
   .form-input{width:100%;height:48px;padding:0 16px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--white);font-family:var(--font);font-size:15px;color:var(--text);}
@@ -449,6 +452,18 @@
     </div>
     <div class="scroll-area" style="padding-top:8px;">
       <div class="card">
+        <div class="form-group">
+          <div class="form-label"><i class="ti ti-photo"></i> Product Photo <span style="font-size:11px;color:var(--text-3);font-weight:400;">(optional)</span></div>
+          <div class="img-upload-box" id="img-upload-box" onclick="document.getElementById('product-image-input').click()">
+            <img id="product-img-preview" src="" style="display:none;" />
+            <div class="upload-label" id="upload-label">
+              <i class="ti ti-upload" style="font-size:28px;color:var(--text-3);"></i>
+              <span>Tap to upload photo</span>
+            </div>
+            <input type="file" id="product-image-input" accept="image/*" onchange="handleImageUpload(event)" style="display:none;" />
+            <button class="remove-img" id="remove-img-btn" style="display:none;" onclick="removeProductImage(event)"><i class="ti ti-x" style="font-size:11px;"></i></button>
+          </div>
+        </div>
         <div class="form-group">
           <div class="form-label"><i class="ti ti-tag"></i> Product Name</div>
           <input class="form-input" id="pname" placeholder="e.g. Mango Pickle" />
@@ -865,7 +880,7 @@ async function loadData() {
 }
 
 // ── Navigation ──
-const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales','allbills','customers','customer-detail','reports'];
+const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales','allbills','customers','customer-detail','reports','orders','order-detail'];
 
 function showScreen(id) {
   SCREENS.forEach(s => {
@@ -1018,8 +1033,15 @@ window.deleteProduct = async function(id) {
 // ── Add/Edit Product ──
 window.openAddProduct = function(id) {
   editingProductId = id;
+  productImageBase64 = null;
   document.getElementById('add-product-title').textContent = id?'Edit Product':'Add New Product';
   const variantRows = document.getElementById('variant-rows');
+  // Reset image UI
+  const preview = document.getElementById('product-img-preview');
+  preview.src = ''; preview.style.display = 'none';
+  document.getElementById('upload-label').style.display = 'flex';
+  document.getElementById('remove-img-btn').style.display = 'none';
+  document.getElementById('product-image-input').value = '';
   if (id) {
     const p = products.find(x=>x.id===id);
     document.getElementById('pname').value = p.name;
@@ -1027,6 +1049,12 @@ window.openAddProduct = function(id) {
     document.getElementById('pnotes').value = p.notes||'';
     variantRows.innerHTML='';
     p.variants.forEach(v=>addVariantRow(v.label, v.price, v.stock ?? ''));
+    if (p.imageBase64) {
+      preview.src = p.imageBase64;
+      preview.style.display = 'block';
+      document.getElementById('upload-label').style.display = 'none';
+      document.getElementById('remove-img-btn').style.display = 'flex';
+    }
   } else {
     document.getElementById('pname').value='';
     document.getElementById('pcategory').value='Pickle';
@@ -1035,6 +1063,35 @@ window.openAddProduct = function(id) {
     addVariantRow('','');
   }
   goTo('add-product');
+};
+
+let productImageBase64 = null;
+
+window.handleImageUpload = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showToast('Image too large — please use a photo under 2MB'); return; }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    productImageBase64 = ev.target.result;
+    const preview = document.getElementById('product-img-preview');
+    preview.src = productImageBase64;
+    preview.style.display = 'block';
+    document.getElementById('upload-label').style.display = 'none';
+    document.getElementById('remove-img-btn').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+};
+
+window.removeProductImage = function(e) {
+  e.stopPropagation();
+  productImageBase64 = null;
+  const preview = document.getElementById('product-img-preview');
+  preview.src = '';
+  preview.style.display = 'none';
+  document.getElementById('upload-label').style.display = 'flex';
+  document.getElementById('remove-img-btn').style.display = 'none';
+  document.getElementById('product-image-input').value = '';
 };
 
 window.addVariantRow = function(label='',price='',stock='') {
@@ -1065,7 +1122,20 @@ window.saveProduct = async function() {
   if (!variants.length) { showToast('Add at least one variant'); return; }
   const btn = document.getElementById('save-product-btn');
   btn.textContent='Saving...'; btn.disabled=true;
-  const prod = { name, category:document.getElementById('pcategory').value, variants, notes:document.getElementById('pnotes').value.trim(), createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp() };
+  const prod = {
+    name,
+    category: document.getElementById('pcategory').value,
+    variants,
+    notes: document.getElementById('pnotes').value.trim(),
+    createdAt: editingProductId ? (products.find(p=>p.id===editingProductId)?.createdAt || serverTimestamp()) : serverTimestamp()
+  };
+  if (productImageBase64) {
+    prod.imageBase64 = productImageBase64;
+  } else if (editingProductId) {
+    // keep existing image if user didn't upload a new one
+    const existing = products.find(p=>p.id===editingProductId);
+    if (existing?.imageBase64) prod.imageBase64 = existing.imageBase64;
+  }
   const id = editingProductId || doc(collection(db,'users',currentUser.uid,'products')).id;
   await setDoc(doc(db,'users',currentUser.uid,'products',id), prod);
   showToast(editingProductId?'Product updated!':'Product saved!');
@@ -1834,6 +1904,133 @@ window.exportCSV = function() {
     a.href = url; a.download = fileName; a.click();
     URL.revokeObjectURL(url);
     showToast('CSV exported!');
+  }
+};
+
+// ── Shop Orders ──
+function loadShopOrders() {
+  if (!currentUser) return;
+  const oRef = collection(db, 'users', currentUser.uid, 'orders');
+  unsubOrders = onSnapshot(oRef, snap => {
+    shopOrders = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
+        const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      });
+    updateOrdersBadge();
+    if (document.getElementById('screen-orders').classList.contains('active')) renderOrders();
+  });
+}
+
+function updateOrdersBadge() {
+  const pending = shopOrders.filter(o => o.status === 'pending').length;
+  const badge = document.getElementById('orders-badge');
+  if (!badge) return;
+  if (pending > 0) {
+    badge.textContent = pending;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+window.setOrderFilter = function(filter) {
+  currentOrderFilter = filter;
+  ['pending','confirmed','complete','all'].forEach(f => {
+    document.getElementById('filter-' + f)?.classList.toggle('active', f === filter);
+  });
+  renderOrders();
+};
+
+function renderOrders() {
+  const el = document.getElementById('orders-list');
+  if (!el) return;
+  const filtered = currentOrderFilter === 'all'
+    ? shopOrders
+    : shopOrders.filter(o => o.status === currentOrderFilter);
+  document.getElementById('orders-subtitle').textContent =
+    `${shopOrders.filter(o=>o.status==='pending').length} pending · ${shopOrders.length} total`;
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-inbox-off"></i><p>No ${currentOrderFilter === 'all' ? '' : currentOrderFilter + ' '}orders yet.</p></div>`;
+    return;
+  }
+  el.innerHTML = filtered.map(o => {
+    const ts = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt || 0);
+    const statusColors = { pending:'#fff3cd;color:#856404', confirmed:'#eaf3de;color:#2D5A27', complete:'#d1e7dd;color:#0a3622' };
+    const statusLabels = { pending:'⏳ Pending', confirmed:'✅ Confirmed', complete:'🎉 Complete' };
+    const statusStyle = statusColors[o.status] || statusColors.pending;
+    const itemsSummary = (o.items||[]).map(i=>`${i.productName} ×${i.qty}`).join(', ');
+    return `<div style="background:var(--white);border-radius:var(--radius);border:1px solid var(--border-light);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;" onclick="viewOrderDetail('${o.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${o.customerName || 'Customer'}</div>
+          <div style="font-size:11px;color:var(--text-3);">${o.customerPhone ? o.customerPhone + ' · ' : ''}${ts.toLocaleDateString('en-IN',{day:'numeric',month:'short'})} ${ts.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+        <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:${statusStyle};">${statusLabels[o.status]||'⏳ Pending'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsSummary}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:15px;font-weight:700;color:var(--green);">${fmtRupee(o.total||0)}</span>
+        <span style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:4px;">
+          <i class="ti ti-${o.fulfillment==='delivery'?'motorbike':'building-store'}"></i>
+          ${o.fulfillment==='delivery'?'Delivery':'Pickup'}
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.viewOrderDetail = function(id) {
+  const order = shopOrders.find(o => o.id === id);
+  if (!order) return;
+  currentOrderId = id;
+  const ts = order.createdAt?.toDate ? order.createdAt.toDate() : new Date(order.createdAt || 0);
+  const el = document.getElementById('order-detail-content');
+  const statusOptions = ['pending','confirmed','complete'];
+  document.getElementById('order-detail-title').textContent = `Order · ${order.customerName || 'Customer'}`;
+  el.innerHTML = `
+    <div class="order-detail-section">
+      <div class="detail-section-title">Customer</div>
+      <div class="detail-row"><span>Name</span><span style="font-weight:600;">${order.customerName||'—'}</span></div>
+      ${order.customerPhone ? `<div class="detail-row"><span>Phone</span><span>${order.customerPhone}</span></div>` : ''}
+      ${order.customerEmail ? `<div class="detail-row"><span>Email</span><span>${order.customerEmail}</span></div>` : ''}
+      <div class="detail-row"><span>Placed</span><span>${ts.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})} ${ts.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span></div>
+      <div class="detail-row"><span>Fulfillment</span><span style="display:flex;align-items:center;gap:4px;"><i class="ti ti-${order.fulfillment==='delivery'?'motorbike':'building-store'}" style="color:var(--green);"></i>${order.fulfillment==='delivery'?'Home Delivery':'Pickup'}</span></div>
+      ${order.address ? `<div class="detail-row"><span>Address</span><span>${order.address}</span></div>` : ''}
+      ${order.notes ? `<div class="detail-row"><span>Notes</span><span>${order.notes}</span></div>` : ''}
+    </div>
+    <div class="order-detail-section">
+      <div class="detail-section-title">Items</div>
+      ${(order.items||[]).map(i=>`
+        <div class="detail-row">
+          <span>${i.productName} – ${i.variant} × ${i.qty}</span>
+          <span style="font-weight:600;">${fmtRupee(i.qty*i.price)}</span>
+        </div>`).join('')}
+      <div class="detail-total-row"><span>Total</span><span>${fmtRupee(order.total||0)}</span></div>
+    </div>
+    <div class="order-detail-section">
+      <div class="detail-section-title">Update Status</div>
+      <div style="display:flex;gap:8px;">
+        ${statusOptions.map(s => `<button onclick="updateOrderStatus('${id}','${s}')"
+          style="flex:1;height:40px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:${order.status===s?'var(--green)':'var(--white)'};color:${order.status===s?'white':'var(--text-2)'};font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;">
+          ${s==='pending'?'⏳ Pending':s==='confirmed'?'✅ Confirmed':'🎉 Complete'}
+        </button>`).join('')}
+      </div>
+    </div>
+  `;
+  goTo('order-detail');
+};
+
+window.updateOrderStatus = async function(id, status) {
+  try {
+    await updateDoc(doc(db, 'users', currentUser.uid, 'orders', id), { status });
+    showToast('Order status updated!');
+    // Re-render detail view
+    viewOrderDetail(id);
+  } catch(e) {
+    showToast('Failed to update status');
   }
 };
 
