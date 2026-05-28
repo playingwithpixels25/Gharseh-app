@@ -57,6 +57,34 @@
   .nav-item i{font-size:22px;}
   .nav-item.active{color:var(--green);}
 
+  /* Customer Directory */
+  .customer-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border-light);padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:var(--shadow);}
+  .customer-card:active{opacity:.85;}
+  .cust-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;}
+  .cust-info{flex:1;min-width:0;}
+  .cust-name{font-size:15px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cust-meta{font-size:11px;color:var(--text-3);margin-top:2px;}
+  .cust-stat{text-align:right;flex-shrink:0;}
+  .cust-total{font-size:15px;font-weight:600;color:var(--green);}
+  .cust-bills{font-size:11px;color:var(--text-3);margin-top:2px;}
+  .repeat-badge{display:inline-flex;align-items:center;gap:3px;background:var(--gold-light);color:var(--gold);border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600;margin-left:6px;}
+  /* Reports */
+  .month-picker{display:flex;align-items:center;gap:10px;background:var(--white);border-radius:var(--radius-sm);border:1px solid var(--border-light);padding:10px 14px;margin-bottom:14px;}
+  .month-picker select{flex:1;border:none;background:transparent;font-family:var(--font);font-size:14px;font-weight:600;color:var(--text);outline:none;}
+  .report-stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;}
+  .report-stat{background:var(--white);border-radius:var(--radius-sm);border:1px solid var(--border-light);padding:12px;text-align:center;}
+  .report-stat-val{font-family:var(--font-display);font-size:20px;color:var(--green);font-weight:600;}
+  .report-stat-lbl{font-size:10px;color:var(--text-3);margin-top:2px;}
+  .product-rank-card{background:var(--white);border-radius:var(--radius-sm);border:1px solid var(--border-light);padding:12px 14px;margin-bottom:8px;}
+  .rank-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .rank-num{width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .rank-num.gold{background:var(--gold);}
+  .rank-name{flex:1;font-size:14px;font-weight:600;color:var(--text);}
+  .rank-total{font-size:14px;font-weight:600;color:var(--green);}
+  .rank-bar-wrap{background:var(--cream);border-radius:4px;height:6px;overflow:hidden;}
+  .rank-bar{height:6px;border-radius:4px;background:var(--green);transition:width .4s;}
+  .rank-bar.gold{background:var(--gold);}
+  .rank-variants{font-size:11px;color:var(--text-3);margin-top:6px;}
   /* Floating New Bill Button */
   .fab-new-bill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);z-index:200;background:var(--green);color:#fff;border:none;border-radius:28px;padding:13px 28px;display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(45,90,39,0.4);cursor:pointer;white-space:nowrap;}
   .fab-new-bill i{font-size:20px;}
@@ -560,6 +588,52 @@
     </div>
   </div>
 
+  <!-- CUSTOMER DIRECTORY -->
+  <div class="screen" id="screen-customers">
+    <div class="topbar">
+      <div class="topbar-left"><h1>Customers</h1><p id="customers-subtitle">All your regulars</p></div>
+    </div>
+    <div class="scroll-area">
+      <div class="search-bar">
+        <div class="search-input-wrap">
+          <i class="ti ti-search"></i>
+          <input placeholder="Search by name or phone..." id="customer-search" oninput="renderCustomers()" />
+        </div>
+      </div>
+      <div id="customers-list"></div>
+    </div>
+  </div>
+
+  <!-- CUSTOMER DETAIL -->
+  <div class="screen" id="screen-customer-detail">
+    <div class="back-bar">
+      <button class="back-btn" onclick="goBack()"><i class="ti ti-arrow-left"></i></button>
+      <div><div class="back-bar-title" id="cdetail-name">Customer</div><div style="font-size:12px;color:var(--text-3);" id="cdetail-phone"></div></div>
+      <button id="cdetail-newbill-btn" onclick="newBillForCustomer()" style="background:var(--green);color:#fff;border:none;border-radius:var(--radius-sm);padding:8px 12px;font-family:var(--font);font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;cursor:pointer;"><i class="ti ti-plus" style="font-size:14px;"></i> New Bill</button>
+    </div>
+    <div class="scroll-area" style="padding-top:4px;">
+      <div id="cdetail-stats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;"></div>
+      <div class="section-title" style="margin-bottom:10px;font-size:14px;"><i class="ti ti-clipboard-list"></i> Bill History</div>
+      <div id="cdetail-bills"></div>
+    </div>
+  </div>
+
+  <!-- MONTHLY REPORTS -->
+  <div class="screen" id="screen-reports">
+    <div class="topbar">
+      <div class="topbar-left"><h1>Reports</h1><p>Monthly top products</p></div>
+    </div>
+    <div class="scroll-area">
+      <div class="month-picker">
+        <i class="ti ti-calendar" style="font-size:18px;color:var(--green);"></i>
+        <select id="report-month" onchange="renderReport()"></select>
+      </div>
+      <div class="report-stat-row" id="report-stats"></div>
+      <div class="section-title" style="margin-bottom:10px;font-size:14px;"><i class="ti ti-trophy"></i> Top Products by Revenue</div>
+      <div id="report-products"></div>
+    </div>
+  </div>
+
   <!-- Floating New Bill Button -->
   <button class="fab-new-bill" id="fab-new-bill" onclick="navTo('bill')" style="display:none;">
     <i class="ti ti-plus"></i>
@@ -570,6 +644,8 @@
   <nav class="bottom-nav" id="main-nav" style="display:none;">
     <button class="nav-item active" id="nav-home" onclick="navTo('home')"><i class="ti ti-home"></i><span>Home</span></button>
     <button class="nav-item" id="nav-allbills" onclick="navTo('allbills');"><i class="ti ti-history"></i><span>History</span></button>
+    <button class="nav-item" id="nav-customers" onclick="navTo('customers')"><i class="ti ti-users"></i><span>Customers</span></button>
+    <button class="nav-item" id="nav-reports" onclick="navTo('reports')"><i class="ti ti-chart-bar"></i><span>Reports</span></button>
     <button class="nav-item" id="nav-products" onclick="navTo('products')"><i class="ti ti-package"></i><span>Products</span></button>
   </nav>
 </div>
@@ -614,6 +690,7 @@ let editingProductId = null;
 let screenStack = ['login'];
 let currentBillId = null;
 let unsubBills = null;
+let selectedCustomerPhone = null;
 let unsubProducts = null;
 
 // ── Logo ──
@@ -714,6 +791,8 @@ async function loadData() {
     bills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (document.getElementById('screen-home').classList.contains('active')) renderHome();
     if (document.getElementById('screen-sales').classList.contains('active')) renderSales();
+    if (document.getElementById('screen-customers').classList.contains('active')) renderCustomers();
+    if (document.getElementById('screen-reports').classList.contains('active')) renderReport();
   });
 
   // Load draft
@@ -721,14 +800,14 @@ async function loadData() {
 }
 
 // ── Navigation ──
-const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales','allbills'];
+const SCREENS = ['login','loading','home','products','add-product','bill','preview','sales','allbills','customers','customer-detail','reports'];
 
 function showScreen(id) {
   SCREENS.forEach(s => {
     const el = document.getElementById('screen-' + s);
     if (el) el.classList.toggle('active', s === id);
   });
-  ['home','products'].forEach(s => {
+  ['home','products','allbills','customers','reports'].forEach(s => {
     const btn = document.getElementById('nav-' + s);
     if (btn) btn.classList.toggle('active', s === id);
   });
@@ -742,6 +821,8 @@ window.goTo = function(id) {
   if (id === 'sales') { renderSales(); document.getElementById('sales-date-label').textContent = formatDate(new Date()); }
   if (id === 'bill') initBillScreen();
   if (id === 'allbills') renderAllBills();
+  if (id === 'customers') renderCustomers();
+  if (id === 'reports') renderReport();
 };
 
 window.navTo = function(id) {
@@ -751,6 +832,8 @@ window.navTo = function(id) {
   if (id === 'products') renderProducts();
   if (id === 'bill') initBillScreen();
   if (id === 'allbills') renderAllBills();
+  if (id === 'customers') renderCustomers();
+  if (id === 'reports') renderReport();
 };
 
 window.goBack = function() {
@@ -761,6 +844,8 @@ window.goBack = function() {
   if (prev === 'products') renderProducts();
   if (prev === 'sales') renderSales();
   if (prev === 'allbills') renderAllBills();
+  if (prev === 'customers') renderCustomers();
+  if (prev === 'reports') renderReport();
 };
 
 // ── Utilities ──
@@ -1404,6 +1489,196 @@ window.shareWhatsApp = function() {
   var url = 'https://wa.me/?text=' + encodeURIComponent(msg);
   window.open(url, '_blank');
 };// ── Export CSV ──
+
+// ── Customer Directory ──
+function buildCustomerMap() {
+  const map = {};
+  bills.forEach(b => {
+    const phone = (b.customerPhone||'').trim();
+    const name = (b.customerName||'Unknown').trim();
+    if (!phone) return;
+    if (!map[phone]) map[phone] = { name, phone, bills:[], total:0 };
+    map[phone].bills.push(b);
+    map[phone].total += b.total||0;
+    // Keep most recent name
+    const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date||b.createdAt);
+    const existing = map[phone]._lastDate;
+    if (!existing || bDate > existing) { map[phone].name = name; map[phone]._lastDate = bDate; }
+  });
+  return Object.values(map).sort((a,b)=>b.total-a.total);
+}
+
+window.renderCustomers = function() {
+  const search = (document.getElementById('customer-search')?.value||'').toLowerCase();
+  const customers = buildCustomerMap();
+  const filtered = customers.filter(c =>
+    c.name.toLowerCase().includes(search) || c.phone.includes(search)
+  );
+  const el = document.getElementById('customers-list');
+  const subtitle = document.getElementById('customers-subtitle');
+  const repeatCount = customers.filter(c=>c.bills.length>=2).length;
+  if (subtitle) subtitle.textContent = `${customers.length} customers · ${repeatCount} regulars`;
+
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-users-group"></i><p>${search?'No customers match.':'No bills yet — customers will appear here.'}</p></div>`;
+    return;
+  }
+  el.innerHTML = filtered.map(c => {
+    const isRepeat = c.bills.length >= 2;
+    const lastBill = c.bills.reduce((latest,b) => {
+      const d = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date||b.createdAt);
+      return d > latest ? d : latest;
+    }, new Date(0));
+    const av = avatarColor(c.name);
+    return `<div class="customer-card" onclick="openCustomerDetail('${c.phone.replace(/'/g,"\\'")}')">
+      <div class="cust-avatar" style="background:${av.bg};color:${av.color};">${initials(c.name)}</div>
+      <div class="cust-info">
+        <div class="cust-name">${c.name}${isRepeat?`<span class="repeat-badge"><i class="ti ti-star-filled" style="font-size:9px;"></i> Regular</span>`:''}</div>
+        <div class="cust-meta">${c.phone} · Last: ${formatDateShort(lastBill)}</div>
+      </div>
+      <div class="cust-stat">
+        <div class="cust-total">${fmtRupee(c.total)}</div>
+        <div class="cust-bills">${c.bills.length} bill${c.bills.length!==1?'s':''}</div>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+window.openCustomerDetail = function(phone) {
+  selectedCustomerPhone = phone;
+  const customers = buildCustomerMap();
+  const c = customers.find(x=>x.phone===phone);
+  if (!c) return;
+  document.getElementById('cdetail-name').textContent = c.name;
+  document.getElementById('cdetail-phone').textContent = c.phone;
+
+  // Stats
+  const avgOrder = c.total / c.bills.length;
+  const statsEl = document.getElementById('cdetail-stats');
+  statsEl.innerHTML = `
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(c.total)}</div><div class="report-stat-lbl">Total Spent</div></div>
+    <div class="report-stat"><div class="report-stat-val">${c.bills.length}</div><div class="report-stat-lbl">Bills</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(avgOrder)}</div><div class="report-stat-lbl">Avg Order</div></div>
+  `;
+
+  // Bill history
+  const sorted = [...c.bills].sort((a,b)=>{
+    const da = a.createdAt?.toDate?a.createdAt.toDate():new Date(a.date||a.createdAt);
+    const db2 = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
+    return db2-da;
+  });
+  const av = avatarColor(c.name);
+  document.getElementById('cdetail-bills').innerHTML = sorted.map(b=>{
+    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
+    return `<div class="bill-row" onclick="openBillPreview('${b.id}')">
+      <div class="bill-avatar" style="background:${av.bg};color:${av.color};">${initials(c.name)}</div>
+      <div class="bill-info"><strong>${b.billNo||b.id}</strong><span>${formatDateShort(d)} · ${formatTime(d)} · ${b.paymentMode||'UPI'}</span></div>
+      <div class="bill-amount">${fmtRupee(b.total||0)}</div>
+    </div>`;
+  }).join('') || `<div class="empty-state"><p>No bills found.</p></div>`;
+
+  goTo('customer-detail');
+};
+
+window.newBillForCustomer = function() {
+  const customers = buildCustomerMap();
+  const c = customers.find(x=>x.phone===selectedCustomerPhone);
+  if (!c) return;
+  // Pre-fill and go to bill screen
+  goTo('bill');
+  setTimeout(()=>{
+    const nameEl = document.getElementById('cust-name');
+    const phoneEl = document.getElementById('cust-phone');
+    if (nameEl) nameEl.value = c.name;
+    if (phoneEl) phoneEl.value = c.phone;
+    saveDraft();
+  }, 100);
+};
+
+// ── Monthly Reports ──
+function populateMonthPicker() {
+  const sel = document.getElementById('report-month');
+  if (!sel) return;
+  const months = new Set();
+  bills.forEach(b => {
+    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
+    if (!isNaN(d)) months.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  });
+  const now = new Date();
+  months.add(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+  const sorted = [...months].sort().reverse();
+  const current = sel.value;
+  sel.innerHTML = sorted.map(m=>{
+    const [y,mo] = m.split('-');
+    const label = new Date(y,mo-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    return `<option value="${m}" ${m===current?'selected':''}>${label}</option>`;
+  }).join('');
+}
+
+window.renderReport = function() {
+  populateMonthPicker();
+  const sel = document.getElementById('report-month');
+  const chosen = sel?.value || (() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; })();
+  const [y,mo] = chosen.split('-').map(Number);
+
+  const monthBills = bills.filter(b=>{
+    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
+    return !isNaN(d) && d.getFullYear()===y && d.getMonth()+1===mo;
+  });
+
+  // Summary stats
+  const totalRev = monthBills.reduce((s,b)=>s+(b.total||0),0);
+  const totalBills = monthBills.length;
+  const uniqueCusts = new Set(monthBills.map(b=>b.customerPhone||b.customerName)).size;
+  document.getElementById('report-stats').innerHTML = `
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalRev)}</div><div class="report-stat-lbl">Revenue</div></div>
+    <div class="report-stat"><div class="report-stat-val">${totalBills}</div><div class="report-stat-lbl">Bills</div></div>
+    <div class="report-stat"><div class="report-stat-val">${uniqueCusts}</div><div class="report-stat-lbl">Customers</div></div>
+  `;
+
+  // Aggregate product sales
+  const prodMap = {};
+  monthBills.forEach(b=>{
+    (b.items||[]).forEach(item=>{
+      const key = item.productName;
+      if (!key) return;
+      if (!prodMap[key]) prodMap[key] = { name:key, category:item.category, revenue:0, qty:0, variants:{} };
+      const v = item.variants?.[item.variantIdx]||{};
+      const price = v.price||item.price||0;
+      const qty = item.qty||1;
+      prodMap[key].revenue += price*qty;
+      prodMap[key].qty += qty;
+      const vLabel = v.label||'Default';
+      if (!prodMap[key].variants[vLabel]) prodMap[key].variants[vLabel] = {qty:0,revenue:0};
+      prodMap[key].variants[vLabel].qty += qty;
+      prodMap[key].variants[vLabel].revenue += price*qty;
+    });
+  });
+
+  const ranked = Object.values(prodMap).sort((a,b)=>b.revenue-a.revenue);
+  const maxRev = ranked[0]?.revenue||1;
+
+  if (!ranked.length) {
+    document.getElementById('report-products').innerHTML = `<div class="empty-state"><i class="ti ti-chart-bar-off"></i><p>No sales data for this month.</p></div>`;
+    return;
+  }
+
+  document.getElementById('report-products').innerHTML = ranked.map((p,i)=>{
+    const pct = Math.round((p.revenue/maxRev)*100);
+    const isTop = i===0;
+    const variantBreakdown = Object.entries(p.variants).map(([label,v])=>`${label}: ${v.qty} sold · ${fmtRupee(v.revenue)}`).join(' &nbsp;·&nbsp; ');
+    return `<div class="product-rank-card">
+      <div class="rank-header">
+        <div class="rank-num${isTop?' gold':''}">${i+1}</div>
+        <div class="rank-name">${productEmoji(p.category)} ${p.name}</div>
+        <div class="rank-total">${fmtRupee(p.revenue)}</div>
+      </div>
+      <div class="rank-bar-wrap"><div class="rank-bar${isTop?' gold':''}" style="width:${pct}%"></div></div>
+      <div class="rank-variants">${p.qty} units sold &nbsp;·&nbsp; ${variantBreakdown}</div>
+    </div>`;
+  }).join('');
+};
+
 window.exportCSV = function() {
   if (!bills.length) { showToast('No bills to export'); return; }
 
