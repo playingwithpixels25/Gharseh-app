@@ -1410,6 +1410,19 @@ async function getBtPrintChar() {
   showToast('Connecting...');
   const server = await device.gatt.connect();
   _thermalDevice = device;
+  
+// Auto-reconnect on disconnect without re-prompting
+device.addEventListener('gattserverdisconnected', async () => {
+  showToast('Printer disconnected. Reconnecting...');
+  try {
+    await device.gatt.connect();
+    showToast('Printer reconnected ✅');
+  } catch(e) {
+    showToast('Reconnect failed. Tap Print to try again.');
+    _thermalDevice = null;
+    _thermalChar = null;
+  }
+});
 
   // Strategy 1: try known service/char pairs
   for (const { service, char } of BT_PRINT_SERVICES) {
