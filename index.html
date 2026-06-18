@@ -1463,12 +1463,16 @@ async function btWrite(char, data) {
 // Build ESC/POS byte array for the bill
 function buildEscPos(bill) {
   const enc = new TextEncoder();
+  const sanitize = str => str
+    .replace(/₹/g, 'Rs.')
+    .replace(/❤/g, '<3')
+    .replace(/[^\x00-\x7F]/g, '?')
   const bytes = [];
 
   const ESC = 0x1B, GS = 0x1D, LF = 0x0A;
 
   const push = (...args) => args.forEach(b => bytes.push(b));
-  const text = str => enc.encode(str).forEach(b => bytes.push(b));
+  const text = str => enc.encode(sanitize(str)).forEach(b => bytes.push(b));
   const line = str => { text(str); push(LF); };
   const divider = ch => line((ch||'-').repeat(32));
 
@@ -1552,7 +1556,7 @@ function buildEscPos(bill) {
   // ── Footer ──
   push(ESC, 0x61, 0x01);             // Center
   push(ESC, 0x45, 0x01);
-  line('Thank you! ❤');
+  line('Thank you! <3');
   push(ESC, 0x45, 0x00);
   line('See you again soon!');
   line('*** GharsSeh ***');
