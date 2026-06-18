@@ -1387,60 +1387,76 @@ window.savePDF = async function() {
 let _thermalDevice = null;
 let _thermalChar   = null;
 
-// Known ESC/POS BLE service/characteristic UUIDs (covers most generic thermal printers)
+// Known ESC/POS BLE service/characteristic UUIDs
 const BT_PRINT_SERVICES = [
-  { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af1-0000-1000-8000-00805f9b34fb' }, // common generic
-  { service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', char: '49535343-8841-43f4-a8d4-ecbe34729bb3' }, // ISSC/Realtek
-  { service: 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', char: 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f' }, // Xprinter / XTECH common
+  { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af1-0000-1000-8000-00805f9b34fb' },
+  { service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', char: '49535343-8841-43f4-a8d4-ecbe34729bb3' },
+  { service: 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', char: 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f' },
 ];
 
 async function getBtPrintChar() {
-  // Try to re-use existing connection
   if (_thermalChar && _thermalDevice?.gatt?.connected) return _thermalChar;
+  if (!navigator.bluetooth) throw new Error('Web Bluetooth not supported on this browser/device.');
 
-  if (!navigator.bluetooth) {
-    throw new Error('Web Bluetooth not supported on this browser/device.');
-  }
-
-  showToast('Looking for printer…');
-
-  // Build service filter list for requestDevice
+  showToast('Select your XTECH printer...');
   const optionalServices = BT_PRINT_SERVICES.map(s => s.service);
 
+  // acceptAllDevices so user can always see the printer by name
   const device = await navigator.bluetooth.requestDevice({
-    // Accept any BT device that advertises one of our known print services
-    filters: [{ services: [BT_PRINT_SERVICES[0].service] },
-              { services: [BT_PRINT_SERVICES[1].service] },
-              { services: [BT_PRINT_SERVICES[2].service] }],
+    acceptAllDevices: true,
     optionalServices,
-  }).catch(async () => {
-    // Fallback: accept ANY nearby device (user picks from list)
-    return navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
   });
 
-  showToast('Connecting…');
+  showToast('Connecting...');
   const server = await device.gatt.connect();
   _thermalDevice = device;
 
-  // Try each known service/char combo
+  // Strategy 1: try known service/char pairs
   for (const { service, char } of BT_PRINT_SERVICES) {
     try {
       const svc = await server.getPrimaryService(service);
-      const characteristic = await svc.getCharacteristic(char);
-      _thermalChar = characteristic;
-      return characteristic;
+      const c   = await svc.getCharacteristic(char);
+      if (c.properties.write || c.properties.writeWithoutResponse) {
+        _thermalChar = c;
+        console.log('BT print char found (known):', service, char);
+        return c;
+      }
     } catch { /* try next */ }
   }
 
-  throw new Error('Could not find a print characteristic. Make sure the XTECH printer is on and paired.');
+  // Strategy 2: auto-discover — enumerate ALL services and find first writable char
+  showToast('Auto-detecting printer...');
+  try {
+    const services = await server.getPrimaryServices();
+    for (const svc of services) {
+      try {
+        const chars = await svc.getCharacteristics();
+        for (const c of chars) {
+          if (c.properties.write || c.properties.writeWithoutResponse) {
+            _thermalChar = c;
+            console.log('BT print char auto-discovered:', svc.uuid, c.uuid);
+            return c;
+          }
+        }
+      } catch { /* service may deny characteristic listing */ }
+    }
+  } catch(e) { console.warn('Service discovery failed:', e); }
+
+  throw new Error('Could not find a writable print channel. Make sure printer is on and not connected to another device.');
 }
 
-// Write data in 512-byte chunks (BLE MTU limit)
+// Write in 100-byte chunks with the correct method
 async function btWrite(char, data) {
-  const CHUNK = 512;
+  const CHUNK = 100;
+  const noResponse = char.properties.writeWithoutResponse;
   for (let i = 0; i < data.length; i += CHUNK) {
-    await char.writeValueWithoutResponse(data.slice(i, i + CHUNK));
-    await new Promise(r => setTimeout(r, 30)); // small gap between chunks
+    const slice = data.slice(i, i + CHUNK);
+    if (noResponse) {
+      await char.writeValueWithoutResponse(slice);
+    } else {
+      await char.writeValue(slice);
+    }
+    await new Promise(r => setTimeout(r, 60));
   }
 }
 
