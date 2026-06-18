@@ -323,6 +323,39 @@
     .bill-grand-total span:last-child { font-size: 14px; }
     .revenue-amount { font-size: 14px; }
   }
+
+  /* Thermal print — activated via body.thermal-mode class */
+  body.thermal-mode * { visibility: hidden !important; }
+  body.thermal-mode #thermal-print-frame,
+  body.thermal-mode #thermal-print-frame * { visibility: visible !important; }
+  body.thermal-mode #thermal-print-frame {
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
+    z-index: 9999;
+  }
+  @media print {
+    body.thermal-mode * { visibility: hidden !important; }
+    body.thermal-mode #thermal-print-frame,
+    body.thermal-mode #thermal-print-frame * { visibility: visible !important; }
+    body.thermal-mode #thermal-print-frame {
+      position: fixed !important; inset: 0 !important;
+      width: 100% !important; margin: 0 !important; padding: 0 !important;
+    }
+  }
+
+  /* Thermal button style */
+  .thermal-print-btn {
+    flex: 1; width: 100%; height: 46px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: #1a1a2e;
+    color: white;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    cursor: pointer;
+  }
+  .thermal-print-btn:active { opacity: .85; }
 </style>
 </head>
 <body>
@@ -532,6 +565,9 @@
     <div class="preview-actions">
       <button class="edit-bill-btn" onclick="editCurrentBill()"><i class="ti ti-pencil"></i> Edit Bill</button>
       <button class="print-bill-btn" onclick="savePDF()"><i class="ti ti-printer"></i> Save PDF</button>
+    </div>
+    <div class="preview-actions" style="margin-top:8px;">
+      <button class="thermal-print-btn" onclick="printThermal()"><i class="ti ti-receipt-2"></i> Print Bill (Thermal)</button>
     </div>
     <div class="preview-actions" style="margin-top:8px;">
       <button class="edit-bill-btn" style="background:var(--red,#e53935);color:#fff;border:none;flex:1;" onclick="deleteCurrentBill()"><i class="ti ti-trash"></i> Delete Bill</button>
@@ -1344,6 +1380,194 @@ window.savePDF = async function() {
     console.error(e);
     showToast('PDF failed. Try again.');
   }
+};
+
+// ── Thermal Print ──
+window.printThermal = function() {
+  const el = document.getElementById('bill-paper-content');
+  if (!el) { showToast('Bill not found'); return; }
+
+  // Build a clean thermal receipt HTML (58mm width friendly)
+  const billNoEl   = el.querySelector('.bill-no');
+  const billDateEl = el.querySelector('.bill-date');
+  const billTimeEl = el.querySelector('.bill-time');
+  const billNo     = billNoEl   ? billNoEl.textContent.trim()   : '';
+  const billDate   = billDateEl ? billDateEl.textContent.trim() : '';
+  const billTime   = billTimeEl ? billTimeEl.textContent.trim() : '';
+
+  // Customer
+  const custBoxes = el.querySelectorAll('.bill-customer-box');
+  let custName = '', custPhone = '';
+  custBoxes.forEach(box => {
+    const label = box.querySelector('label')?.textContent || '';
+    const val   = box.querySelector('strong')?.textContent || '';
+    if (label.toLowerCase().includes('customer')) custName  = val;
+    if (label.toLowerCase().includes('phone'))    custPhone = val;
+  });
+
+  // Items from the table
+  const rows = el.querySelectorAll('.bill-table tbody tr');
+  let itemsHTML = '';
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('td');
+    if (cells.length >= 5) {
+      const name = cells[0].textContent.trim();
+      const variant = cells[1].textContent.trim();
+      const qty  = cells[2].textContent.trim();
+      const rate = cells[3].textContent.trim();
+      const amt  = cells[4].textContent.trim();
+      itemsHTML += `
+        <tr>
+          <td colspan="3" style="padding:3px 0 1px;font-size:11px;font-weight:600;">${name}</td>
+        </tr>
+        <tr>
+          <td style="padding:0 0 4px;font-size:10px;color:#555;">${variant}</td>
+          <td style="text-align:center;padding:0 0 4px;font-size:10px;">${qty}</td>
+          <td style="text-align:right;padding:0 0 4px;font-size:11px;font-weight:700;">${amt}</td>
+        </tr>`;
+    }
+  });
+
+  // Totals
+  const grandTotalSpans = el.querySelectorAll('.bill-grand-total span');
+  const grandTotal = grandTotalSpans.length >= 2 ? grandTotalSpans[1].textContent.trim() : '';
+  const subtotalEl = el.querySelector('.total-row:not(.discount):not(.grand) span:last-child');
+  const subtotal   = subtotalEl ? subtotalEl.textContent.trim() : '';
+  const discountEl = el.querySelector('.total-row.discount span:last-child');
+  const discount   = discountEl ? discountEl.textContent.trim() : '';
+
+  // Payment mode
+  const payEl = el.querySelector('[style*="green-light"]');
+  const payMode = payEl ? payEl.textContent.trim() : '';
+
+  // Notes
+  const notesEl = el.querySelector('[style*="font-style:italic"]');
+  const notes   = notesEl ? notesEl.textContent.trim() : '';
+
+  const thermalHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <title>GharsSeh — ${billNo}</title>
+  <style>
+    @page {
+      size: 80mm auto;
+      margin: 0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      color: #000;
+      background: #fff;
+      width: 80mm;
+      padding: 4mm 4mm 8mm;
+    }
+    .center { text-align: center; }
+    .bold   { font-weight: bold; }
+    .large  { font-size: 15px; }
+    .divider-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
+    .divider-dash  { border: none; border-top: 1px dashed #000; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; }
+    .col-hdr { font-size: 10px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 3px; }
+    .footer { text-align: center; margin-top: 8px; font-size: 11px; }
+    .footer .big { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="bold large">GharsSeh</div>
+    <div style="font-size:9px;letter-spacing:2px;">HOMEMADE WITH LOVE</div>
+    <div style="font-size:9px;margin-top:3px;">Guwahati, Assam · India</div>
+    <div style="font-size:9px;">+91 7002614813</div>
+  </div>
+
+  <hr class="divider-solid"/>
+
+  <table>
+    <tr>
+      <td class="bold">Bill No:</td>
+      <td style="text-align:right;" class="bold">${billNo}</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;">${billDate}</td>
+      <td style="text-align:right;font-size:10px;">${billTime}</td>
+    </tr>
+  </table>
+
+  <hr class="divider-dash"/>
+
+  <table>
+    <tr>
+      <td style="font-size:10px;">Customer:</td>
+      <td style="text-align:right;font-weight:bold;font-size:10px;">${custName}</td>
+    </tr>
+    ${custPhone ? `<tr><td style="font-size:10px;">Phone:</td><td style="text-align:right;font-size:10px;">${custPhone}</td></tr>` : ''}
+  </table>
+
+  <hr class="divider-solid"/>
+
+  <table>
+    <thead>
+      <tr>
+        <td class="col-hdr" style="width:55%;">Item / Variant</td>
+        <td class="col-hdr" style="width:15%;text-align:center;">Qty</td>
+        <td class="col-hdr" style="width:30%;text-align:right;">Amt</td>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHTML}
+    </tbody>
+  </table>
+
+  <hr class="divider-solid"/>
+
+  <table>
+    ${subtotal ? `<tr><td style="font-size:10px;">Subtotal</td><td style="text-align:right;font-size:10px;">${subtotal}</td></tr>` : ''}
+    ${discount ? `<tr><td style="font-size:10px;">Discount</td><td style="text-align:right;font-size:10px;">${discount}</td></tr>` : ''}
+  </table>
+
+  <table style="margin-top:4px;">
+    <tr>
+      <td class="bold large">TOTAL</td>
+      <td style="text-align:right;" class="bold large">${grandTotal}</td>
+    </tr>
+  </table>
+
+  ${payMode ? `<div style="margin-top:5px;font-size:10px;text-align:center;font-weight:bold;">Payment: ${payMode}</div>` : ''}
+  ${notes   ? `<div style="margin-top:3px;font-size:9px;text-align:center;font-style:italic;">${notes}</div>` : ''}
+
+  <hr class="divider-dash"/>
+
+  <div class="footer">
+    <div class="big">Thank you! ❤️</div>
+    <div style="font-size:9px;">See you again soon!</div>
+    <div style="font-size:9px;margin-top:4px;letter-spacing:1px;">*** GharsSeh ***</div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      window.print();
+      // Close the popup after printing (or on cancel)
+      window.onfocus = function() { setTimeout(() => window.close(), 500); };
+    };
+  <\/script>
+</body>
+</html>`;
+
+  // Open in a new small popup window — this is what the XTECH driver picks up
+  const printWin = window.open('', '_blank', 'width=320,height=600,menubar=no,toolbar=no,location=no,status=no');
+  if (!printWin) {
+    showToast('Allow popups to print! Check browser settings.');
+    return;
+  }
+  printWin.document.open();
+  printWin.document.write(thermalHTML);
+  printWin.document.close();
 };
 
 // ── Sales ──
