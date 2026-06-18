@@ -1382,53 +1382,204 @@ window.savePDF = async function() {
   }
 };
 
-// ── Thermal Print ──
-window.printThermal = function() {
+// ── Thermal Print (Web Bluetooth → ESC/POS) ──
+// Stores the last connected BT device so re-prints don't ask again
+let _thermalDevice = null;
+let _thermalChar   = null;
+
+// Known ESC/POS BLE service/characteristic UUIDs (covers most generic thermal printers)
+const BT_PRINT_SERVICES = [
+  { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af1-0000-1000-8000-00805f9b34fb' }, // common generic
+  { service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', char: '49535343-8841-43f4-a8d4-ecbe34729bb3' }, // ISSC/Realtek
+  { service: 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', char: 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f' }, // Xprinter / XTECH common
+];
+
+async function getBtPrintChar() {
+  // Try to re-use existing connection
+  if (_thermalChar && _thermalDevice?.gatt?.connected) return _thermalChar;
+
+  if (!navigator.bluetooth) {
+    throw new Error('Web Bluetooth not supported on this browser/device.');
+  }
+
+  showToast('Looking for printer…');
+
+  // Build service filter list for requestDevice
+  const optionalServices = BT_PRINT_SERVICES.map(s => s.service);
+
+  const device = await navigator.bluetooth.requestDevice({
+    // Accept any BT device that advertises one of our known print services
+    filters: [{ services: [BT_PRINT_SERVICES[0].service] },
+              { services: [BT_PRINT_SERVICES[1].service] },
+              { services: [BT_PRINT_SERVICES[2].service] }],
+    optionalServices,
+  }).catch(async () => {
+    // Fallback: accept ANY nearby device (user picks from list)
+    return navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
+  });
+
+  showToast('Connecting…');
+  const server = await device.gatt.connect();
+  _thermalDevice = device;
+
+  // Try each known service/char combo
+  for (const { service, char } of BT_PRINT_SERVICES) {
+    try {
+      const svc = await server.getPrimaryService(service);
+      const characteristic = await svc.getCharacteristic(char);
+      _thermalChar = characteristic;
+      return characteristic;
+    } catch { /* try next */ }
+  }
+
+  throw new Error('Could not find a print characteristic. Make sure the XTECH printer is on and paired.');
+}
+
+// Write data in 512-byte chunks (BLE MTU limit)
+async function btWrite(char, data) {
+  const CHUNK = 512;
+  for (let i = 0; i < data.length; i += CHUNK) {
+    await char.writeValueWithoutResponse(data.slice(i, i + CHUNK));
+    await new Promise(r => setTimeout(r, 30)); // small gap between chunks
+  }
+}
+
+// Build ESC/POS byte array for the bill
+function buildEscPos(bill) {
+  const enc = new TextEncoder();
+  const bytes = [];
+
+  const ESC = 0x1B, GS = 0x1D, LF = 0x0A;
+
+  const push = (...args) => args.forEach(b => bytes.push(b));
+  const text = str => enc.encode(str).forEach(b => bytes.push(b));
+  const line = str => { text(str); push(LF); };
+  const divider = ch => line((ch||'-').repeat(32));
+
+  // ── Init ──
+  push(ESC, 0x40);                    // ESC @ — initialize printer
+  push(ESC, 0x61, 0x01);             // ESC a 1 — center align
+
+  // ── Header ──
+  push(ESC, 0x45, 0x01);             // Bold ON
+  push(GS,  0x21, 0x11);             // Double width + height
+  line('GharsSeh');
+  push(GS,  0x21, 0x00);             // Normal size
+  push(ESC, 0x45, 0x00);             // Bold OFF
+  line('HOMEMADE WITH LOVE');
+  line('Guwahati, Assam | +91 7002614813');
+  push(LF);
+
+  divider('-');
+
+  // ── Bill Meta ──
+  push(ESC, 0x61, 0x00);             // Left align
+  push(ESC, 0x45, 0x01);
+  line(`Bill No: ${bill.billNo}`);
+  push(ESC, 0x45, 0x00);
+  line(`Date   : ${bill.date}  ${bill.time}`);
+  push(LF);
+
+  // ── Customer ──
+  line(`Customer: ${bill.custName}`);
+  if (bill.custPhone) line(`Phone   : ${bill.custPhone}`);
+  push(LF);
+
+  divider('-');
+
+  // ── Items ──
+  push(ESC, 0x45, 0x01);
+  line('Item              Qty   Amount');
+  push(ESC, 0x45, 0x00);
+  divider('-');
+
+  bill.items.forEach(it => {
+    // Item name + variant (truncate to 32 chars)
+    const nameVariant = `${it.name} (${it.variant})`;
+    line(nameVariant.substring(0, 32));
+
+    // Qty right-aligned with amount
+    const qtyStr = `x${it.qty}`;
+    const amtStr = it.amt;
+    const pad = 32 - qtyStr.length - amtStr.length;
+    line(' '.repeat(Math.max(1, pad)) + qtyStr + amtStr);
+  });
+
+  divider('-');
+
+  // ── Totals ──
+  push(ESC, 0x61, 0x00);
+  if (bill.subtotal && bill.discount) {
+    const sub = `Subtotal:`;
+    const subAmt = bill.subtotal;
+    line(sub + ' '.repeat(Math.max(1, 32 - sub.length - subAmt.length)) + subAmt);
+    const dis = `Discount:`;
+    line(dis + ' '.repeat(Math.max(1, 32 - dis.length - bill.discount.length)) + bill.discount);
+  }
+
+  // Grand total — big
+  push(ESC, 0x61, 0x00);
+  push(ESC, 0x45, 0x01);
+  push(GS,  0x21, 0x11);
+  line('TOTAL: ' + bill.grandTotal);
+  push(GS,  0x21, 0x00);
+  push(ESC, 0x45, 0x00);
+  push(LF);
+
+  // Payment mode
+  if (bill.payMode) line(`Payment: ${bill.payMode.toUpperCase()}`);
+  if (bill.notes)   line(`Note: ${bill.notes}`);
+  push(LF);
+
+  divider('-');
+
+  // ── Footer ──
+  push(ESC, 0x61, 0x01);             // Center
+  push(ESC, 0x45, 0x01);
+  line('Thank you! ❤');
+  push(ESC, 0x45, 0x00);
+  line('See you again soon!');
+  line('*** GharsSeh ***');
+  push(LF); push(LF); push(LF);      // Feed paper
+
+  // Cut (if supported)
+  push(GS, 0x56, 0x41, 0x03);        // Full cut
+
+  return new Uint8Array(bytes);
+}
+
+// Extract bill data from rendered DOM
+function extractBillFromDom() {
   const el = document.getElementById('bill-paper-content');
-  if (!el) { showToast('Bill not found'); return; }
+  if (!el) return null;
 
-  // Build a clean thermal receipt HTML (58mm width friendly)
-  const billNoEl   = el.querySelector('.bill-no');
-  const billDateEl = el.querySelector('.bill-date');
-  const billTimeEl = el.querySelector('.bill-time');
-  const billNo     = billNoEl   ? billNoEl.textContent.trim()   : '';
-  const billDate   = billDateEl ? billDateEl.textContent.trim() : '';
-  const billTime   = billTimeEl ? billTimeEl.textContent.trim() : '';
+  const billNo   = el.querySelector('.bill-no')?.textContent.trim()   || '';
+  const billDate = el.querySelector('.bill-date')?.textContent.trim() || '';
+  const billTime = el.querySelector('.bill-time')?.textContent.trim() || '';
 
-  // Customer
   const custBoxes = el.querySelectorAll('.bill-customer-box');
   let custName = '', custPhone = '';
   custBoxes.forEach(box => {
-    const label = box.querySelector('label')?.textContent || '';
-    const val   = box.querySelector('strong')?.textContent || '';
-    if (label.toLowerCase().includes('customer')) custName  = val;
-    if (label.toLowerCase().includes('phone'))    custPhone = val;
+    const lbl = box.querySelector('label')?.textContent || '';
+    const val = box.querySelector('strong')?.textContent || '';
+    if (lbl.toLowerCase().includes('customer')) custName  = val;
+    if (lbl.toLowerCase().includes('phone'))    custPhone = val;
   });
 
-  // Items from the table
-  const rows = el.querySelectorAll('.bill-table tbody tr');
-  let itemsHTML = '';
-  rows.forEach(row => {
+  const items = [];
+  el.querySelectorAll('.bill-table tbody tr').forEach(row => {
     const cells = row.querySelectorAll('td');
     if (cells.length >= 5) {
-      const name = cells[0].textContent.trim();
-      const variant = cells[1].textContent.trim();
-      const qty  = cells[2].textContent.trim();
-      const rate = cells[3].textContent.trim();
-      const amt  = cells[4].textContent.trim();
-      itemsHTML += `
-        <tr>
-          <td colspan="3" style="padding:3px 0 1px;font-size:11px;font-weight:600;">${name}</td>
-        </tr>
-        <tr>
-          <td style="padding:0 0 4px;font-size:10px;color:#555;">${variant}</td>
-          <td style="text-align:center;padding:0 0 4px;font-size:10px;">${qty}</td>
-          <td style="text-align:right;padding:0 0 4px;font-size:11px;font-weight:700;">${amt}</td>
-        </tr>`;
+      items.push({
+        name:    cells[0].textContent.trim(),
+        variant: cells[1].textContent.trim(),
+        qty:     cells[2].textContent.trim(),
+        rate:    cells[3].textContent.trim(),
+        amt:     cells[4].textContent.trim(),
+      });
     }
   });
 
-  // Totals
   const grandTotalSpans = el.querySelectorAll('.bill-grand-total span');
   const grandTotal = grandTotalSpans.length >= 2 ? grandTotalSpans[1].textContent.trim() : '';
   const subtotalEl = el.querySelector('.total-row:not(.discount):not(.grand) span:last-child');
@@ -1436,138 +1587,35 @@ window.printThermal = function() {
   const discountEl = el.querySelector('.total-row.discount span:last-child');
   const discount   = discountEl ? discountEl.textContent.trim() : '';
 
-  // Payment mode
-  const payEl = el.querySelector('[style*="green-light"]');
-  const payMode = payEl ? payEl.textContent.trim() : '';
-
-  // Notes
-  const notesEl = el.querySelector('[style*="font-style:italic"]');
+  const payEl  = el.querySelector('span[style*="green-light"], span[style*="green"]');
+  const payMode = payEl ? payEl.textContent.trim().replace(/\s+/g,' ') : '';
+  const notesEl = el.querySelector('span[style*="italic"]');
   const notes   = notesEl ? notesEl.textContent.trim() : '';
 
-  const thermalHTML = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8"/>
-  <title>GharsSeh — ${billNo}</title>
-  <style>
-    @page {
-      size: 80mm auto;
-      margin: 0;
+  return { billNo, date: billDate, time: billTime, custName, custPhone, items, grandTotal, subtotal, discount, payMode, notes };
+}
+
+window.printThermal = async function() {
+  const bill = extractBillFromDom();
+  if (!bill) { showToast('Bill not found'); return; }
+
+  try {
+    const char = await getBtPrintChar();
+    showToast('Sending to printer…');
+    const data = buildEscPos(bill);
+    await btWrite(char, data);
+    showToast('✅ Printed successfully!');
+  } catch(err) {
+    console.error('Thermal print error:', err);
+    if (err.name === 'NotFoundError' || err.message.includes('cancelled')) {
+      showToast('Print cancelled.');
+    } else if (err.message.includes('not supported')) {
+      showToast('Bluetooth printing not supported on this browser.');
+    } else {
+      showToast('Print failed: ' + (err.message || 'Unknown error'));
+      _thermalDevice = null; _thermalChar = null; // reset so next tap retries
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
-      width: 80mm;
-      padding: 4mm 4mm 8mm;
-    }
-    .center { text-align: center; }
-    .bold   { font-weight: bold; }
-    .large  { font-size: 15px; }
-    .divider-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
-    .divider-dash  { border: none; border-top: 1px dashed #000; margin: 5px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    td { vertical-align: top; }
-    .col-hdr { font-size: 10px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 3px; }
-    .footer { text-align: center; margin-top: 8px; font-size: 11px; }
-    .footer .big { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
-    @media print {
-      body { -webkit-print-color-adjust: exact; }
-    }
-  </style>
-</head>
-<body>
-  <div class="center">
-    <div class="bold large">GharsSeh</div>
-    <div style="font-size:9px;letter-spacing:2px;">HOMEMADE WITH LOVE</div>
-    <div style="font-size:9px;margin-top:3px;">Guwahati, Assam · India</div>
-    <div style="font-size:9px;">+91 7002614813</div>
-  </div>
-
-  <hr class="divider-solid"/>
-
-  <table>
-    <tr>
-      <td class="bold">Bill No:</td>
-      <td style="text-align:right;" class="bold">${billNo}</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;">${billDate}</td>
-      <td style="text-align:right;font-size:10px;">${billTime}</td>
-    </tr>
-  </table>
-
-  <hr class="divider-dash"/>
-
-  <table>
-    <tr>
-      <td style="font-size:10px;">Customer:</td>
-      <td style="text-align:right;font-weight:bold;font-size:10px;">${custName}</td>
-    </tr>
-    ${custPhone ? `<tr><td style="font-size:10px;">Phone:</td><td style="text-align:right;font-size:10px;">${custPhone}</td></tr>` : ''}
-  </table>
-
-  <hr class="divider-solid"/>
-
-  <table>
-    <thead>
-      <tr>
-        <td class="col-hdr" style="width:55%;">Item / Variant</td>
-        <td class="col-hdr" style="width:15%;text-align:center;">Qty</td>
-        <td class="col-hdr" style="width:30%;text-align:right;">Amt</td>
-      </tr>
-    </thead>
-    <tbody>
-      ${itemsHTML}
-    </tbody>
-  </table>
-
-  <hr class="divider-solid"/>
-
-  <table>
-    ${subtotal ? `<tr><td style="font-size:10px;">Subtotal</td><td style="text-align:right;font-size:10px;">${subtotal}</td></tr>` : ''}
-    ${discount ? `<tr><td style="font-size:10px;">Discount</td><td style="text-align:right;font-size:10px;">${discount}</td></tr>` : ''}
-  </table>
-
-  <table style="margin-top:4px;">
-    <tr>
-      <td class="bold large">TOTAL</td>
-      <td style="text-align:right;" class="bold large">${grandTotal}</td>
-    </tr>
-  </table>
-
-  ${payMode ? `<div style="margin-top:5px;font-size:10px;text-align:center;font-weight:bold;">Payment: ${payMode}</div>` : ''}
-  ${notes   ? `<div style="margin-top:3px;font-size:9px;text-align:center;font-style:italic;">${notes}</div>` : ''}
-
-  <hr class="divider-dash"/>
-
-  <div class="footer">
-    <div class="big">Thank you! ❤️</div>
-    <div style="font-size:9px;">See you again soon!</div>
-    <div style="font-size:9px;margin-top:4px;letter-spacing:1px;">*** GharsSeh ***</div>
-  </div>
-
-  <script>
-    window.onload = function() {
-      window.print();
-      // Close the popup after printing (or on cancel)
-      window.onfocus = function() { setTimeout(() => window.close(), 500); };
-    };
-  <\/script>
-</body>
-</html>`;
-
-  // Open in a new small popup window — this is what the XTECH driver picks up
-  const printWin = window.open('', '_blank', 'width=320,height=600,menubar=no,toolbar=no,location=no,status=no');
-  if (!printWin) {
-    showToast('Allow popups to print! Check browser settings.');
-    return;
   }
-  printWin.document.open();
-  printWin.document.write(thermalHTML);
-  printWin.document.close();
 };
 
 // ── Sales ──
