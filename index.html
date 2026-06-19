@@ -260,6 +260,14 @@
   .bill-footer-script{font-family:var(--font-display);font-style:italic;font-size:18px;color:var(--green);margin-bottom:10px;}
   .bill-footer-sub{font-size:11px;color:var(--text-3);line-height:1.6;background:var(--cream);border-radius:var(--radius-xs);padding:8px 12px;display:flex;align-items:flex-start;gap:6px;}
   .bill-footer-sub i{font-size:14px;color:var(--green);flex-shrink:0;margin-top:1px;}
+  .bill-offer-strip{margin-top:14px;border:1.5px dashed var(--gold);border-radius:var(--radius-sm);padding:10px 14px;background:var(--gold-light);text-align:center;}
+  .bill-offer-title{font-size:11px;font-weight:600;color:var(--gold);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px;}
+  .bill-offer-text{font-family:var(--font-display);font-size:14px;color:var(--text);font-weight:500;margin-bottom:4px;}
+  .bill-offer-code{font-size:11px;color:var(--text-3);}
+  .bill-offer-code span{font-weight:600;color:var(--text-2);}
+  .redeem-btn{font-size:12px;padding:5px 12px;border-radius:20px;border:1.5px solid var(--gold);background:transparent;color:var(--gold);font-weight:600;cursor:pointer;transition:all 0.2s;}
+  .redeem-btn.redeemed{background:var(--gold);color:var(--white);border-color:var(--gold);}
+  .redeem-badge{font-size:11px;padding:3px 10px;border-radius:20px;background:#fdecea;color:var(--red);font-weight:600;}
 
   /* Sales */
   .sales-summary-card{background:var(--white);border-radius:var(--radius);border:1px solid var(--border-light);padding:16px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1px 1fr;}
@@ -1328,6 +1336,11 @@ function renderBillContent(b) {
     <div class="bill-footer">
       <div class="bill-footer-main">Thank you for supporting us. ❤️</div>
       <div class="bill-footer-script">See you again!</div>
+    </div>
+    <div class="bill-offer-strip">
+      <div class="bill-offer-title">🎁 Special Offer</div>
+      <div class="bill-offer-text">5% off on your next order above Rs.1000</div>
+      <div class="bill-offer-code">Quote Bill No: <span>${b.billNo}</span> · Valid 30 days</div>
     </div>`;
 }
 
@@ -1573,6 +1586,19 @@ function buildEscPos(bill) {
   push(ESC, 0x45, 0x00);
   line('See you again soon!');
   line('*** GharsSeh ***');
+  push(LF);
+
+  // ── Offer Strip ──
+  divider('=');
+  push(ESC, 0x45, 0x01);             // Bold on
+  line('** SPECIAL OFFER **');
+  push(ESC, 0x45, 0x00);             // Bold off
+  line('5% off on your next order');
+  line('on purchases above Rs.1000');
+  push(LF);
+  line('Quote Bill No: ' + bill.billNo);
+  line('(valid for 30 days)');
+  divider('=');
   push(LF); push(LF); push(LF);      // Feed paper
 
   // Cut (if supported)
@@ -1663,6 +1689,7 @@ function renderSales() {
   const iconTCs=['#1a5c32','#7a3e00','#1a3a6b','#7a1a46','#3d1a7a','#5c4a00'];
   listEl.innerHTML=tb.map((b,i)=>{
     const ci=i%iconColors.length;
+    const redeemed = isOfferRedeemed(b.billNo);
     return `<div class="sales-bill-row" style="flex-direction:column;align-items:stretch;gap:8px;">
       <div style="display:flex;gap:12px;align-items:center;">
         <div class="sales-bill-icon" style="background:${iconColors[ci]};color:${iconTCs[ci]};"><i class="ti ti-receipt" style="font-size:18px;"></i></div>
@@ -1678,10 +1705,34 @@ function renderSales() {
         <button class="sales-action-btn primary" onclick="reprintBill('${b.id}')"><i class="ti ti-printer" style="font-size:14px;"></i> Print</button>
         <button class="sales-action-btn danger" onclick="deleteBill('${b.id}')"><i class="ti ti-trash" style="font-size:14px;"></i> Delete</button>
       </div>
+      <button class="redeem-btn ${redeemed?'redeemed':''}" onclick="toggleRedeem('${b.billNo}')">
+        ${redeemed ? '✅ Offer Redeemed' : '🎁 Mark Offer Redeemed'}
+      </button>
     </div>`;
   }).join('');
   document.getElementById('sales-motivation').innerHTML=`<div class="motivation-bar" style="margin-top:8px;"><i class="ti ti-chart-bar"></i><p>Great start! You've made <strong>${fmtRupee(rev)}</strong> today 💚</p></div>`;
 }
+
+// ── Offer Redemption Tracking ──
+function getRedeemedOffers() {
+  try { return JSON.parse(localStorage.getItem('gs_redeemed_offers') || '{}'); } catch(e) { return {}; }
+}
+function isOfferRedeemed(billNo) {
+  return !!getRedeemedOffers()[billNo];
+}
+window.toggleRedeem = function(billNo) {
+  const data = getRedeemedOffers();
+  if (data[billNo]) {
+    if (!confirm('Mark this offer as NOT redeemed?')) return;
+    delete data[billNo];
+    showToast('Offer unmarked');
+  } else {
+    data[billNo] = { redeemedAt: new Date().toISOString() };
+    showToast('Offer marked as redeemed ✅');
+  }
+  localStorage.setItem('gs_redeemed_offers', JSON.stringify(data));
+  renderSales();
+};
 
 window.viewBillDetail = function(id) {
   const b=bills.find(x=>x.id===id);
