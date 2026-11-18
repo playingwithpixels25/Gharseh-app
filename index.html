@@ -2187,33 +2187,59 @@ window.renderReport = function() {
   }).sort((a,b)=>reportBillDate(b)-reportBillDate(a));
 
   const filtered = reportFilteredBills;
-  const totalRev = filtered.reduce((s,b)=>s+(Number(b.total)||0),0);
-  const totalDiscount = filtered.reduce((s,b)=>s+(Number(b.discount)||0),0);
+
+  // Allocate each bill-level discount proportionally across its line items.
+  // This makes a category/product report show only that category/product's
+  // sold value less its fair share of the bill discount, never the whole bill.
+  function getReportItemBreakdown(b, applySelection=true) {
+    const items = (b.items||[]).map(item=>{
+      const matchedProd = products.find(p=>p.name===item.name);
+      const qty = Number(item.qty)||1;
+      const gross = (Number(item.price)||0)*qty;
+      return { item, matchedProd, qty, gross };
+    });
+    const billItemsGross = items.reduce((sum,x)=>sum+x.gross,0);
+    const billDiscount = Math.max(0, Number(b.discount)||0);
+    return items.map(x=>{
+      const discountShare = billItemsGross > 0 ? billDiscount*(x.gross/billItemsGross) : 0;
+      const selected = !applySelection || ((!category || x.matchedProd?.category===category) && (!product || x.item.name===product));
+      return {...x, discountShare, net:Math.max(0,x.gross-discountShare), selected};
+    });
+  }
+
+  const reportTotals = filtered.map(b=>{
+    const lines = getReportItemBreakdown(b);
+    return {
+      gross: lines.filter(x=>x.selected).reduce((s,x)=>s+x.gross,0),
+      discount: lines.filter(x=>x.selected).reduce((s,x)=>s+x.discountShare,0),
+      net: lines.filter(x=>x.selected).reduce((s,x)=>s+x.net,0)
+    };
+  });
+  const totalSubtotal = reportTotals.reduce((s,x)=>s+x.gross,0);
+  const totalDiscount = reportTotals.reduce((s,x)=>s+x.discount,0);
+  const totalRev = reportTotals.reduce((s,x)=>s+x.net,0);
   const totalBills = filtered.length;
   const uniqueCusts = new Set(filtered.map(b=>b.custPhone||b.custName).filter(Boolean)).size;
   const avgBill = totalBills ? totalRev/totalBills : 0;
   document.getElementById('report-stats').innerHTML = `
-    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalRev)}</div><div class="report-stat-lbl">Revenue</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalRev)}</div><div class="report-stat-lbl">Net revenue</div></div>
     <div class="report-stat"><div class="report-stat-val">${totalBills}</div><div class="report-stat-lbl">Bills</div></div>
     <div class="report-stat"><div class="report-stat-val">${uniqueCusts}</div><div class="report-stat-lbl">Customers</div></div>
-    <div class="report-stat"><div class="report-stat-val">${fmtRupee(avgBill)}</div><div class="report-stat-lbl">Average bill</div></div>
-    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalDiscount)}</div><div class="report-stat-lbl">Discounts</div></div>
-    <div class="report-stat"><div class="report-stat-val">${fmtRupee(filtered.reduce((s,b)=>s+(b.subtotal||b.total||0),0))}</div><div class="report-stat-lbl">Subtotal</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(avgBill)}</div><div class="report-stat-lbl">Avg. net revenue / bill</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalDiscount)}</div><div class="report-stat-lbl">Allocated discount</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalSubtotal)}</div><div class="report-stat-lbl">Selected items subtotal</div></div>
   `;
 
   const prodMap = {};
-  filtered.forEach(b=>(b.items||[]).forEach(item=>{
-    if (!item.name) return;
-    const matchedProd = products.find(p=>p.name===item.name);
-    if (category && matchedProd?.category!==category) return;
-    if (product && item.name!==product) return;
+  filtered.forEach(b=>getReportItemBreakdown(b).forEach(line=>{
+    const {item, matchedProd, qty, gross, net} = line;
+    if (!item.name || !line.selected) return;
     const key=item.name;
     if (!prodMap[key]) prodMap[key]={name:key,category:matchedProd?.category||'Other',revenue:0,qty:0,variants:{}};
-    const price=Number(item.price)||0, qty=Number(item.qty)||1;
-    prodMap[key].revenue+=price*qty; prodMap[key].qty+=qty;
+    prodMap[key].revenue+=net; prodMap[key].qty+=qty;
     const vLabel=item.variant||'Default';
     if (!prodMap[key].variants[vLabel]) prodMap[key].variants[vLabel]={qty:0,revenue:0};
-    prodMap[key].variants[vLabel].qty+=qty; prodMap[key].variants[vLabel].revenue+=price*qty;
+    prodMap[key].variants[vLabel].qty+=qty; prodMap[key].variants[vLabel].revenue+=net;
   }));
   const ranked=Object.values(prodMap).sort((a,b)=>b.revenue-a.revenue);
   const maxRev=ranked[0]?.revenue||1;
@@ -2227,7 +2253,9 @@ window.renderReport = function() {
   document.getElementById('report-bills').innerHTML = filtered.length ? filtered.map(b=>{
     const d=reportBillDate(b);
     const itemText=(b.items||[]).map(it=>`${it.name} ×${it.qty}`).join(' · ');
-    return `<div class="report-bill-row" onclick="viewBillDetail('${b.id}')"><div class="report-bill-info"><strong>${b.billNo||'Bill'} · ${b.custName||'Walk-in customer'}</strong><span>${d.toLocaleDateString('en-IN')} · ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})} · ${(b.paymentMode||'upi').toUpperCase()} · ${itemText}</span></div><div class="report-bill-total">${fmtRupee(b.total||0)}</div></div>`;
+    const selectedNet = getReportItemBreakdown(b).filter(x=>x.selected).reduce((s,x)=>s+x.net,0);
+    const displayAmount = (category || product) ? selectedNet : (Number(b.total)||0);
+    return `<div class="report-bill-row" onclick="viewBillDetail('${b.id}')"><div class="report-bill-info"><strong>${b.billNo||'Bill'} · ${b.custName||'Walk-in customer'}</strong><span>${d.toLocaleDateString('en-IN')} · ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})} · ${(b.paymentMode||'upi').toUpperCase()} · ${itemText}</span></div><div class="report-bill-total">${fmtRupee(displayAmount)}</div></div>`;
   }).join('') : `<div class="empty-state"><i class="ti ti-receipt-off"></i><p>No bills match the selected filters.</p></div>`;
 
   const rangeLabel = startValue || 'Any date';
