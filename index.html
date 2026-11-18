@@ -579,7 +579,10 @@
     </div>
     <div class="preview-actions">
       <button class="edit-bill-btn" onclick="editCurrentBill()"><i class="ti ti-pencil"></i> Edit Bill</button>
-      <button class="print-bill-btn" onclick="savePDF()"><i class="ti ti-printer"></i> Save PDF</button>
+      <button class="print-bill-btn" id="confirm-save-bill-btn" onclick="saveBill()"><i class="ti ti-device-floppy"></i> Confirm &amp; Save Bill</button>
+    </div>
+    <div class="preview-actions" style="padding-top:0;">
+      <button class="edit-bill-btn" onclick="savePDF()" style="flex:1;"><i class="ti ti-file-type-pdf"></i> Save PDF</button>
     </div>
     <div class="preview-actions" style="margin-top:8px;">
       <button class="thermal-print-btn" onclick="printThermal()"><i class="ti ti-receipt-2"></i> Print Bill (Thermal)</button>
@@ -744,7 +747,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Firebase Config ──
 const firebaseConfig = {
@@ -776,6 +779,8 @@ window.setPayMode = function(mode) {
 let editingProductId = null;
 let screenStack = ['login'];
 let currentBillId = null;
+let previewBillData = null;
+let isSavingBill = false;
 let unsubBills = null;
 let selectedCustomerPhone = null;
 let unsubProducts = null;
@@ -1266,16 +1271,16 @@ function recalc() {
   else dr.style.display='none';
 }
 
-window.clearBill = function() { billItems=[]; document.getElementById('discount-val').value=''; clearDraft(); currentBillId = null; document.getElementById('draft-banner').style.display='none'; renderBillItems(); };
+window.clearBill = function() { billItems=[]; previewBillData=null; document.getElementById('discount-val').value=''; clearDraft(); currentBillId = null; document.getElementById('draft-banner').style.display='none'; renderBillItems(); };
 
 window.previewBill = async function() {
   if (!billItems.length) { showToast('Add at least one item'); return; }
-  const _cn = document.getElementById('cust-name').value.trim();
-  const _cp = document.getElementById('cust-phone').value.trim();
-  if (!_cn) { showToast('Please enter customer name'); document.getElementById('cust-name').focus(); return; }
-  if (!_cp) { showToast('Please enter phone number'); document.getElementById('cust-phone').focus(); return; }
+  const custName = document.getElementById('cust-name').value.trim();
+  const custPhone = document.getElementById('cust-phone').value.trim();
+  if (!custName) { showToast('Please enter customer name'); document.getElementById('cust-name').focus(); return; }
+  if (!custPhone) { showToast('Please enter phone number'); document.getElementById('cust-phone').focus(); return; }
 
-  // Block if any selected variant is OOS or qty exceeds stock
+  // Preview is intentionally read-only: no Firebase write and no stock deduction.
   for (const item of billItems) {
     const v = item.variants[item.variantIdx];
     const vStock = (v.stock !== null && v.stock !== undefined) ? v.stock : null;
@@ -1288,75 +1293,175 @@ window.previewBill = async function() {
       return;
     }
   }
-  const sub=billItems.reduce((s,item)=>s+item.variants[item.variantIdx].price*item.qty,0);
-  const dv=parseFloat(document.getElementById('discount-val')?.value||'0')||0;
-  let disc=0;
-  if (discountType==='flat') disc=Math.min(dv,sub);
-  else disc=sub*Math.min(dv,100)/100;
-  const total=sub-disc;
-  const custName=document.getElementById('cust-name').value.trim();
-  const custPhone=document.getElementById('cust-phone').value.trim();
 
-  // Get or create bill number
-  let billNo, billId;
-  if (currentBillId) {
-    const existing = bills.find(b=>b.id===currentBillId);
-    billNo = existing?.billNo || await getNextBillNo();
-    billId = currentBillId;
-  } else {
-    billNo = await getNextBillNo();
-    billId = doc(collection(db,'users',currentUser.uid,'bills')).id;
-    currentBillId = billId;
-  }
+  const subtotal = billItems.reduce((s,item)=>s+item.variants[item.variantIdx].price*item.qty,0);
+  const discountVal = parseFloat(document.getElementById('discount-val')?.value||'0')||0;
+  const discount = discountType==='flat' ? Math.min(discountVal,subtotal) : subtotal*Math.min(discountVal,100)/100;
+  const existingBill = currentBillId ? bills.find(b=>b.id===currentBillId) : null;
 
-  const now = new Date();
-  const existingBill = bills.find(b=>b.id===billId);
-  const billData = {
-    billNo, custName, custPhone,
-    items: billItems.map(item=>({ name:item.productName, variant:item.variants[item.variantIdx].label, qty:item.qty, price:item.variants[item.variantIdx].price })),
-    subtotal:sub, discount:disc, discountType, discountVal:dv, total,
-    paymentMode, notes: document.getElementById('bill-notes').value.trim(),
-    date: existingBill?.date || now.toISOString(),
-    createdAt: existingBill?.createdAt || serverTimestamp()
+  // Allocate one stable document ID for this preview. Repeated taps/retries reuse it.
+  if (!currentBillId) currentBillId = doc(collection(db,'users',currentUser.uid,'bills')).id;
+
+  previewBillData = {
+    id: currentBillId,
+    billNo: existingBill?.billNo || 'PENDING',
+    custName, custPhone,
+    items: billItems.map(item=>({
+      name:item.productName,
+      variant:item.variants[item.variantIdx].label,
+      qty:item.qty,
+      price:item.variants[item.variantIdx].price
+    })),
+    subtotal,
+    discount,
+    discountType,
+    discountVal,
+    total:subtotal-discount,
+    paymentMode,
+    notes:document.getElementById('bill-notes').value.trim(),
+    date:existingBill?.date || new Date().toISOString(),
+    createdAt:existingBill?.createdAt || null
   };
 
-  await setDoc(doc(db,'users',currentUser.uid,'bills',billId), billData);
-
-  // Adjust stock by the NET change only (handles edits without double-deducting)
-  const stockDeltas = {}; // key: "productName||variantLabel" -> net qty change
-
-  if (existingBill && existingBill.items) {
-    existingBill.items.forEach(it => {
-      const key = `${it.name}||${it.variant}`;
-      stockDeltas[key] = (stockDeltas[key]||0) - it.qty; // give back old qty
-    });
+  window._viewingBillId = null; // this is only a preview until Confirm & Save
+  renderBillContent(previewBillData);
+  const saveBtn = document.getElementById('confirm-save-bill-btn');
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = '<i class="ti ti-device-floppy"></i> Confirm &amp; Save Bill';
+    saveBtn.style.opacity = '1';
   }
-  billItems.forEach(item => {
-    const v = item.variants[item.variantIdx];
-    const key = `${item.productName}||${v.label}`;
-    stockDeltas[key] = (stockDeltas[key]||0) + item.qty; // take new qty
-  });
-
-  for (const key in stockDeltas) {
-    const delta = stockDeltas[key];
-    if (delta === 0) continue; // item unchanged between old and new bill, don't touch stock
-    const [pname, vlabel] = key.split('||');
-    const prod = products.find(p=>p.name===pname);
-    if (!prod) continue;
-    const updatedVariants = prod.variants.map(v => {
-      if (v.label === vlabel && v.stock !== null && v.stock !== undefined) {
-        return { ...v, stock: v.stock - delta };  // allow negative so it shows in products
-      }
-      return v;
-    });
-    await setDoc(doc(db,'users',currentUser.uid,'products',prod.id), { ...prod, variants: updatedVariants }, { merge: true });
-  }
-
-  clearDraft();
-  currentBillId = null;
-  window._viewingBillId = billId;
-  renderBillContent(billData);
   goTo('preview');
+};
+
+window.saveBill = async function() {
+  if (isSavingBill) return;
+  if (!previewBillData || !currentUser) {
+    showToast('Please preview the bill again');
+    return;
+  }
+
+  isSavingBill = true;
+  const btn = document.getElementById('confirm-save-bill-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2"></i> Saving…';
+    btn.style.opacity = '.65';
+  }
+
+  try {
+    const billId = previewBillData.id;
+    const billRef = doc(db,'users',currentUser.uid,'bills',billId);
+    const billNo = previewBillData.billNo === 'PENDING'
+      ? await getNextBillNo()
+      : previewBillData.billNo;
+    const now = new Date();
+    const billData = {
+      ...previewBillData,
+      billNo,
+      date: previewBillData.date || now.toISOString(),
+      createdAt: previewBillData.createdAt || serverTimestamp()
+    };
+    delete billData.id;
+
+    // Bill creation/update and inventory adjustments happen atomically.
+    // If the same new bill is submitted again, the stable ID prevents a second deduction.
+    const result = await runTransaction(db, async transaction => {
+      const billSnap = await transaction.get(billRef);
+      if (billSnap.exists() && !bills.some(b=>b.id===billId)) {
+        return { alreadySaved:true, savedData:billSnap.data() };
+      }
+
+      const oldBill = billSnap.exists() ? billSnap.data() : null;
+      const stockDeltas = {};
+      (oldBill?.items || []).forEach(it => {
+        const key = `${it.name}||${it.variant}`;
+        stockDeltas[key] = (stockDeltas[key]||0) - (Number(it.qty)||0);
+      });
+      (billData.items || []).forEach(it => {
+        const key = `${it.name}||${it.variant}`;
+        stockDeltas[key] = (stockDeltas[key]||0) + (Number(it.qty)||0);
+      });
+
+      const productRefs = {};
+      const productSnaps = {};
+      for (const key of Object.keys(stockDeltas)) {
+        if (!stockDeltas[key]) continue;
+        const pname = key.split('||')[0];
+        const prod = products.find(p=>p.name===pname);
+        if (prod && !productRefs[prod.id]) {
+          productRefs[prod.id] = doc(db,'users',currentUser.uid,'products',prod.id);
+        }
+      }
+      for (const [pid, ref] of Object.entries(productRefs)) {
+        productSnaps[pid] = await transaction.get(ref);
+      }
+
+      // Aggregate all variant changes per product, then write each product once.
+      const productVariantDeltas = {};
+      for (const key of Object.keys(stockDeltas)) {
+        const delta = stockDeltas[key];
+        if (!delta) continue;
+        const [pname,vlabel] = key.split('||');
+        const prod = products.find(p=>p.name===pname);
+        if (!prod || !productSnaps[prod.id]?.exists()) continue;
+        if (!productVariantDeltas[prod.id]) productVariantDeltas[prod.id] = {};
+        productVariantDeltas[prod.id][vlabel] = (productVariantDeltas[prod.id][vlabel]||0) + delta;
+      }
+
+      // All reads are complete. Queue writes only after this point.
+      for (const [pid, variantDeltas] of Object.entries(productVariantDeltas)) {
+        const storedProduct = productSnaps[pid].data();
+        const updatedVariants = (storedProduct.variants||[]).map(v=>{
+          const delta = variantDeltas[v.label]||0;
+          if (delta && v.stock!==null && v.stock!==undefined) {
+            return {...v, stock:(Number(v.stock)||0)-delta};
+          }
+          return v;
+        });
+        transaction.update(productRefs[pid], {variants:updatedVariants});
+      }
+
+      transaction.set(billRef, billData);
+      return {alreadySaved:false, savedData:billData};
+    });
+
+    const finalBillData = result.savedData || billData;
+    if (result.alreadySaved) {
+      showToast('This bill was already saved — no duplicate created');
+    } else {
+      showToast('Bill saved successfully');
+    }
+
+    clearDraft();
+    currentBillId = null;
+    previewBillData = null;
+    window._viewingBillId = billId;
+    renderBillContent({...finalBillData, billNo:finalBillData.billNo || billNo});
+    const saveBtn = document.getElementById('confirm-save-bill-btn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="ti ti-check"></i> Bill Saved';
+      saveBtn.style.opacity = '.65';
+    }
+    // Refresh local data after the atomic transaction.
+    const [billSnap, productSnap] = await Promise.all([
+      getDocs(userRef('bills')),
+      getDocs(userRef('products'))
+    ]);
+    bills = billSnap.docs.map(d=>({id:d.id,...d.data()}));
+    products = productSnap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch (err) {
+    console.error('Bill save failed:', err);
+    showToast(navigator.onLine ? 'Could not save bill. Please retry.' : 'You are offline. Bill is still a preview — reconnect and tap Save Bill once.');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-device-floppy"></i> Retry Save';
+      btn.style.opacity = '1';
+    }
+  } finally {
+    isSavingBill = false;
+  }
 };
 
 async function getNextBillNo() {
@@ -1826,7 +1931,7 @@ window.deleteBill = async function(id) {
 
 // Edit Current Bill
 window.editCurrentBill = function() {
-  const id = window._viewingBillId;
+  const id = window._viewingBillId || (previewBillData?.id && bills.some(b=>b.id===previewBillData.id) ? previewBillData.id : null);
   if (id) {
     const b = bills.find(x=>x.id===id);
     if (b) {
@@ -1935,7 +2040,12 @@ window.renderAllBills = function() {
 // Delete from preview
 window.deleteCurrentBill = async function() {
   const id = window._viewingBillId;
-  if (!id) { showToast('No bill to delete'); return; }
+  if (!id) {
+    previewBillData = null;
+    currentBillId = null;
+    goBack();
+    return;
+  }
   if (!confirm('Delete this bill? This cannot be undone.')) return;
   await deleteDoc(doc(db,'users',currentUser.uid,'bills',id));
   window._viewingBillId = null;
