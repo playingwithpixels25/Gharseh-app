@@ -85,6 +85,13 @@
   .rank-bar{height:6px;border-radius:4px;background:var(--green);transition:width .4s;}
   .rank-bar.gold{background:var(--gold);}
   .rank-variants{font-size:11px;color:var(--text-3);margin-top:6px;}
+  .report-quick-btn{padding:7px 10px;border:1px solid var(--border);border-radius:20px;background:var(--white);color:var(--text-2);font:500 11px var(--font);cursor:pointer;}
+  .report-quick-btn.active{background:var(--green);border-color:var(--green);color:#fff;}
+  .report-bill-row{background:var(--white);border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;}
+  .report-bill-info{flex:1;min-width:0;}
+  .report-bill-info strong{display:block;font-size:13px;color:var(--text);}
+  .report-bill-info span{display:block;font-size:10px;color:var(--text-3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .report-bill-total{font-size:14px;font-weight:700;color:var(--green);white-space:nowrap;}
   /* Floating New Bill Button */
   .fab-new-bill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);z-index:200;background:var(--green);color:#fff;border:none;border-radius:28px;padding:13px 28px;display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:15px;font-weight:600;box-shadow:0 4px 20px rgba(45,90,39,0.4);cursor:pointer;white-space:nowrap;}
   .fab-new-bill i{font-size:20px;}
@@ -674,19 +681,43 @@
     </div>
   </div>
 
-  <!-- MONTHLY REPORTS -->
+  <!-- REPORTS -->
   <div class="screen" id="screen-reports">
     <div class="topbar">
-      <div class="topbar-left"><h1>Reports</h1><p>Monthly top products</p></div>
+      <div class="topbar-left"><h1>Reports</h1><p>Build a report using multiple filters</p></div>
+      <button onclick="exportFilteredReport()" style="background:var(--green);color:#fff;border:none;border-radius:var(--radius-sm);padding:9px 12px;font-family:var(--font);font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;cursor:pointer;"><i class="ti ti-download"></i> Export</button>
     </div>
     <div class="scroll-area">
-      <div class="month-picker">
-        <i class="ti ti-calendar" style="font-size:18px;color:var(--green);"></i>
-        <select id="report-month" onchange="renderReport()"></select>
+      <div class="card" style="padding:14px;margin-bottom:14px;">
+        <div class="section-header">
+          <div class="section-title"><i class="ti ti-filter"></i> Report Filters</div>
+          <button class="view-all" onclick="resetReportFilters()">Reset all</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+          <button class="report-quick-btn active" data-period="month" onclick="setReportPeriod('month')">This month</button>
+          <button class="report-quick-btn" data-period="today" onclick="setReportPeriod('today')">Today</button>
+          <button class="report-quick-btn" data-period="yesterday" onclick="setReportPeriod('yesterday')">Yesterday</button>
+          <button class="report-quick-btn" data-period="custom" onclick="setReportPeriod('custom')">Custom range</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;">
+          <div><label class="form-label">From date</label><input class="form-input" type="date" id="report-start-date" onchange="setReportPeriod('custom');renderReport()" style="height:42px;padding:0 9px;font-size:12px;"></div>
+          <div><label class="form-label">To date</label><input class="form-input" type="date" id="report-end-date" onchange="setReportPeriod('custom');renderReport()" style="height:42px;padding:0 9px;font-size:12px;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;">
+          <div><label class="form-label">Category</label><select class="form-select" id="report-category" onchange="renderReport()" style="height:42px;padding:0 8px;font-size:12px;"><option value="">All categories</option></select></div>
+          <div><label class="form-label">Product</label><select class="form-select" id="report-product" onchange="renderReport()" style="height:42px;padding:0 8px;font-size:12px;"><option value="">All products</option></select></div>
+          <div><label class="form-label">Payment mode</label><select class="form-select" id="report-payment" onchange="renderReport()" style="height:42px;padding:0 8px;font-size:12px;"><option value="">All payments</option><option value="upi">UPI</option><option value="cash">Cash</option><option value="credit">Credit</option></select></div>
+          <div><label class="form-label">Customer</label><input class="form-input" id="report-customer" placeholder="Name or phone" oninput="renderReport()" style="height:42px;padding:0 9px;font-size:12px;"></div>
+          <div><label class="form-label">Minimum bill (₹)</label><input class="form-input" type="number" min="0" id="report-min-amount" placeholder="No minimum" oninput="renderReport()" style="height:42px;padding:0 9px;font-size:12px;"></div>
+          <div><label class="form-label">Maximum bill (₹)</label><input class="form-input" type="number" min="0" id="report-max-amount" placeholder="No maximum" oninput="renderReport()" style="height:42px;padding:0 9px;font-size:12px;"></div>
+        </div>
+        <div id="report-filter-summary" style="font-size:11px;color:var(--text-3);"></div>
       </div>
       <div class="report-stat-row" id="report-stats"></div>
-      <div class="section-title" style="margin-bottom:10px;font-size:14px;"><i class="ti ti-trophy"></i> Top Products by Revenue</div>
+      <div class="section-title" style="margin:4px 0 10px;font-size:14px;"><i class="ti ti-trophy"></i> Product Performance</div>
       <div id="report-products"></div>
+      <div class="section-title" style="margin:16px 0 10px;font-size:14px;"><i class="ti ti-receipt"></i> Matching Bills <span id="report-bill-count" style="font-size:11px;color:var(--text-3);font-weight:400;"></span></div>
+      <div id="report-bills"></div>
     </div>
   </div>
 
@@ -2060,90 +2091,165 @@ window.newBillForCustomer = function() {
   }, 100);
 };
 
-// ── Monthly Reports ──
-function populateMonthPicker() {
-  const sel = document.getElementById('report-month');
-  if (!sel) return;
-  const months = new Set();
-  bills.forEach(b => {
-    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
-    if (!isNaN(d)) months.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-  });
-  const now = new Date();
-  months.add(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
-  const sorted = [...months].sort().reverse();
-  const current = sel.value;
-  sel.innerHTML = sorted.map(m=>{
-    const [y,mo] = m.split('-');
-    const label = new Date(y,mo-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-    return `<option value="${m}" ${m===current?'selected':''}>${label}</option>`;
-  }).join('');
+// ── Flexible Reports ──
+let reportFilteredBills = [];
+let reportPeriod = 'month';
+
+function reportBillDate(b) {
+  const raw = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date || b.createdAt);
+  return raw instanceof Date && !isNaN(raw) ? raw : null;
 }
-
-window.renderReport = function() {
-  populateMonthPicker();
-  const sel = document.getElementById('report-month');
-  const chosen = sel?.value || (() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; })();
-  const [y,mo] = chosen.split('-').map(Number);
-
-  const monthBills = bills.filter(b=>{
-    const d = b.createdAt?.toDate?b.createdAt.toDate():new Date(b.date||b.createdAt);
-    return !isNaN(d) && d.getFullYear()===y && d.getMonth()+1===mo;
+function reportDateInput(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function reportLocalDate(value, endOfDay=false) {
+  if (!value) return null;
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n=>!n)) return null;
+  return new Date(parts[0], parts[1]-1, parts[2], endOfDay?23:0, endOfDay?59:0, endOfDay?59:0, endOfDay?999:0);
+}
+function populateReportOptions() {
+  const categoryEl = document.getElementById('report-category');
+  const productEl = document.getElementById('report-product');
+  if (!categoryEl || !productEl) return;
+  const oldCategory = categoryEl.value;
+  const oldProduct = productEl.value;
+  const categories = [...new Set(products.map(p=>p.category).filter(Boolean))].sort();
+  const productNames = [...new Set(products.map(p=>p.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  categoryEl.innerHTML = '<option value="">All categories</option>' + categories.map(c=>`<option value="${String(c).replace(/"/g,'&quot;')}">${c}</option>`).join('');
+  productEl.innerHTML = '<option value="">All products</option>' + productNames.map(n=>`<option value="${String(n).replace(/"/g,'&quot;')}">${n}</option>`).join('');
+  if (categories.includes(oldCategory)) categoryEl.value = oldCategory;
+  if (productNames.includes(oldProduct)) productEl.value = oldProduct;
+}
+function initReportDates() {
+  const startEl = document.getElementById('report-start-date');
+  const endEl = document.getElementById('report-end-date');
+  if (!startEl || !endEl || startEl.value || endEl.value) return;
+  const now = new Date();
+  startEl.value = reportDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+  endEl.value = reportDateInput(now);
+}
+window.setReportPeriod = function(period) {
+  reportPeriod = period;
+  const now = new Date();
+  const startEl = document.getElementById('report-start-date');
+  const endEl = document.getElementById('report-end-date');
+  if (!startEl || !endEl) return;
+  if (period === 'today') {
+    startEl.value = reportDateInput(now);
+    endEl.value = reportDateInput(now);
+  } else if (period === 'yesterday') {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1);
+    startEl.value = reportDateInput(yesterday);
+    endEl.value = reportDateInput(yesterday);
+  } else if (period === 'month') {
+    startEl.value = reportDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+    endEl.value = reportDateInput(now);
+  }
+  document.querySelectorAll('.report-quick-btn').forEach(btn=>btn.classList.toggle('active', btn.dataset.period===period));
+  if (period !== 'custom') renderReport();
+};
+window.resetReportFilters = function() {
+  ['report-category','report-product','report-payment','report-customer','report-min-amount','report-max-amount'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
   });
+  window.setReportPeriod('month');
+};
+window.renderReport = function() {
+  initReportDates();
+  populateReportOptions();
+  const startValue = document.getElementById('report-start-date')?.value || '';
+  const endValue = document.getElementById('report-end-date')?.value || '';
+  const startDate = reportLocalDate(startValue);
+  const endDate = reportLocalDate(endValue, true);
+  const category = document.getElementById('report-category')?.value || '';
+  const product = document.getElementById('report-product')?.value || '';
+  const payment = document.getElementById('report-payment')?.value || '';
+  const customer = (document.getElementById('report-customer')?.value || '').trim().toLowerCase();
+  const minRaw = document.getElementById('report-min-amount')?.value ?? '';
+  const maxRaw = document.getElementById('report-max-amount')?.value ?? '';
+  const minAmount = minRaw === '' ? null : Number(minRaw);
+  const maxAmount = maxRaw === '' ? null : Number(maxRaw);
 
-  // Summary stats
-  const totalRev = monthBills.reduce((s,b)=>s+(b.total||0),0);
-  const totalBills = monthBills.length;
-  const uniqueCusts = new Set(monthBills.map(b=>b.custPhone||b.custName)).size;
+  reportFilteredBills = bills.filter(b=>{
+    const d = reportBillDate(b);
+    if (!d) return false;
+    if (startDate && d < startDate) return false;
+    if (endDate && d > endDate) return false;
+    if (category && !(b.items||[]).some(it=>products.find(p=>p.name===it.name)?.category===category)) return false;
+    if (product && !(b.items||[]).some(it=>it.name===product)) return false;
+    if (payment && String(b.paymentMode||'upi').toLowerCase()!==payment) return false;
+    if (customer && !(`${b.custName||''} ${b.custPhone||''}`).toLowerCase().includes(customer)) return false;
+    const total = Number(b.total)||0;
+    if (minAmount !== null && total < minAmount) return false;
+    if (maxAmount !== null && total > maxAmount) return false;
+    return true;
+  }).sort((a,b)=>reportBillDate(b)-reportBillDate(a));
+
+  const filtered = reportFilteredBills;
+  const totalRev = filtered.reduce((s,b)=>s+(Number(b.total)||0),0);
+  const totalDiscount = filtered.reduce((s,b)=>s+(Number(b.discount)||0),0);
+  const totalBills = filtered.length;
+  const uniqueCusts = new Set(filtered.map(b=>b.custPhone||b.custName).filter(Boolean)).size;
+  const avgBill = totalBills ? totalRev/totalBills : 0;
   document.getElementById('report-stats').innerHTML = `
     <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalRev)}</div><div class="report-stat-lbl">Revenue</div></div>
     <div class="report-stat"><div class="report-stat-val">${totalBills}</div><div class="report-stat-lbl">Bills</div></div>
     <div class="report-stat"><div class="report-stat-val">${uniqueCusts}</div><div class="report-stat-lbl">Customers</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(avgBill)}</div><div class="report-stat-lbl">Average bill</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(totalDiscount)}</div><div class="report-stat-lbl">Discounts</div></div>
+    <div class="report-stat"><div class="report-stat-val">${fmtRupee(filtered.reduce((s,b)=>s+(b.subtotal||b.total||0),0))}</div><div class="report-stat-lbl">Subtotal</div></div>
   `;
 
-  // Aggregate product sales — bills store item.name / item.variant / item.price (not productName/variants[variantIdx])
   const prodMap = {};
-  monthBills.forEach(b=>{
-    (b.items||[]).forEach(item=>{
-      const key = item.name;
-      if (!key) return;
-      if (!prodMap[key]) {
-        const matchedProd = products.find(p=>p.name===key);
-        prodMap[key] = { name:key, category: matchedProd?.category||'Other', revenue:0, qty:0, variants:{} };
-      }
-      const price = item.price||0;
-      const qty = item.qty||1;
-      prodMap[key].revenue += price*qty;
-      prodMap[key].qty += qty;
-      const vLabel = item.variant||'Default';
-      if (!prodMap[key].variants[vLabel]) prodMap[key].variants[vLabel] = {qty:0,revenue:0};
-      prodMap[key].variants[vLabel].qty += qty;
-      prodMap[key].variants[vLabel].revenue += price*qty;
-    });
+  filtered.forEach(b=>(b.items||[]).forEach(item=>{
+    if (!item.name) return;
+    const matchedProd = products.find(p=>p.name===item.name);
+    if (category && matchedProd?.category!==category) return;
+    if (product && item.name!==product) return;
+    const key=item.name;
+    if (!prodMap[key]) prodMap[key]={name:key,category:matchedProd?.category||'Other',revenue:0,qty:0,variants:{}};
+    const price=Number(item.price)||0, qty=Number(item.qty)||1;
+    prodMap[key].revenue+=price*qty; prodMap[key].qty+=qty;
+    const vLabel=item.variant||'Default';
+    if (!prodMap[key].variants[vLabel]) prodMap[key].variants[vLabel]={qty:0,revenue:0};
+    prodMap[key].variants[vLabel].qty+=qty; prodMap[key].variants[vLabel].revenue+=price*qty;
+  }));
+  const ranked=Object.values(prodMap).sort((a,b)=>b.revenue-a.revenue);
+  const maxRev=ranked[0]?.revenue||1;
+  document.getElementById('report-products').innerHTML = ranked.length ? ranked.map((p,i)=>{
+    const pct=Math.round(p.revenue/maxRev*100), isTop=i===0;
+    const variants=Object.entries(p.variants).map(([label,v])=>`${label}: ${v.qty} sold · ${fmtRupee(v.revenue)}`).join(' &nbsp;·&nbsp; ');
+    return `<div class="product-rank-card"><div class="rank-header"><div class="rank-num${isTop?' gold':''}">${i+1}</div><div class="rank-name">${productEmoji(p.category)} ${p.name}</div><div class="rank-total">${fmtRupee(p.revenue)}</div></div><div class="rank-bar-wrap"><div class="rank-bar${isTop?' gold':''}" style="width:${pct}%"></div></div><div class="rank-variants">${p.qty} units sold &nbsp;·&nbsp; ${variants}</div></div>`;
+  }).join('') : `<div class="empty-state"><i class="ti ti-chart-bar-off"></i><p>No product sales match these filters.</p></div>`;
+
+  document.getElementById('report-bill-count').textContent = `(${totalBills})`;
+  document.getElementById('report-bills').innerHTML = filtered.length ? filtered.map(b=>{
+    const d=reportBillDate(b);
+    const itemText=(b.items||[]).map(it=>`${it.name} ×${it.qty}`).join(' · ');
+    return `<div class="report-bill-row" onclick="viewBillDetail('${b.id}')"><div class="report-bill-info"><strong>${b.billNo||'Bill'} · ${b.custName||'Walk-in customer'}</strong><span>${d.toLocaleDateString('en-IN')} · ${d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})} · ${(b.paymentMode||'upi').toUpperCase()} · ${itemText}</span></div><div class="report-bill-total">${fmtRupee(b.total||0)}</div></div>`;
+  }).join('') : `<div class="empty-state"><i class="ti ti-receipt-off"></i><p>No bills match the selected filters.</p></div>`;
+
+  const rangeLabel = startValue || 'Any date';
+  document.getElementById('report-filter-summary').textContent =
+    `${rangeLabel}${endValue && endValue!==startValue ? ' to '+endValue : ''} · ${totalBills} matching bill${totalBills===1?'':'s'}${category?' · '+category:''}${product?' · '+product:''}${payment?' · '+payment.toUpperCase():''}`;
+};
+window.exportFilteredReport = function() {
+  const filtered = reportFilteredBills || [];
+  if (!filtered.length) { showToast('No matching bills to export'); return; }
+  const rows = [['Bill No','Date','Customer Name','Phone','Payment Mode','Items','Subtotal','Discount','Total']];
+  filtered.forEach(b=>{
+    const d=reportBillDate(b);
+    const items=(b.items||[]).map(it=>`${it.name} (${it.variant||'Default'}) x${it.qty}`).join(' | ');
+    rows.push([b.billNo||'',d?d.toLocaleString('en-IN'):'',b.custName||'',b.custPhone||'',b.paymentMode||'upi',items,b.subtotal||b.total||0,b.discount||0,b.total||0]);
   });
-
-  const ranked = Object.values(prodMap).sort((a,b)=>b.revenue-a.revenue);
-  const maxRev = ranked[0]?.revenue||1;
-
-  if (!ranked.length) {
-    document.getElementById('report-products').innerHTML = `<div class="empty-state"><i class="ti ti-chart-bar-off"></i><p>No sales data for this month.</p></div>`;
-    return;
-  }
-
-  document.getElementById('report-products').innerHTML = ranked.map((p,i)=>{
-    const pct = Math.round((p.revenue/maxRev)*100);
-    const isTop = i===0;
-    const variantBreakdown = Object.entries(p.variants).map(([label,v])=>`${label}: ${v.qty} sold · ${fmtRupee(v.revenue)}`).join(' &nbsp;·&nbsp; ');
-    return `<div class="product-rank-card">
-      <div class="rank-header">
-        <div class="rank-num${isTop?' gold':''}">${i+1}</div>
-        <div class="rank-name">${productEmoji(p.category)} ${p.name}</div>
-        <div class="rank-total">${fmtRupee(p.revenue)}</div>
-      </div>
-      <div class="rank-bar-wrap"><div class="rank-bar${isTop?' gold':''}" style="width:${pct}%"></div></div>
-      <div class="rank-variants">${p.qty} units sold &nbsp;·&nbsp; ${variantBreakdown}</div>
-    </div>`;
-  }).join('');
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\\n');
+  const fileName=`gharsseh-filtered-report-${new Date().toISOString().slice(0,10)}.csv`;
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=fileName; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Filtered report exported!');
 };
 
 window.exportCSV = function() {
