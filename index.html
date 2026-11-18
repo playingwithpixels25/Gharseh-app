@@ -744,7 +744,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Firebase Config ──
 const firebaseConfig = {
@@ -776,6 +776,7 @@ window.setPayMode = function(mode) {
 let editingProductId = null;
 let screenStack = ['login'];
 let currentBillId = null;
+let isPreviewingBill = false; // Prevent rapid/repeated Preview taps from creating multiple bills
 let unsubBills = null;
 let selectedCustomerPhone = null;
 let unsubProducts = null;
@@ -1297,6 +1298,22 @@ window.previewBill = async function() {
   const custName=document.getElementById('cust-name').value.trim();
   const custPhone=document.getElementById('cust-phone').value.trim();
 
+  // Lock synchronously before the first await. A second tap cannot start
+  // another Firestore write while this preview operation is in progress.
+  if (isPreviewingBill) {
+    showToast('Please wait — this bill is already being processed');
+    return;
+  }
+  isPreviewingBill = true;
+  const previewButton = document.querySelector('#screen-bill .preview-btn');
+  if (previewButton) {
+    previewButton.disabled = true;
+    previewButton.dataset.originalHtml = previewButton.innerHTML;
+    previewButton.innerHTML = '<i class="ti ti-loader"></i> Preparing Preview...';
+    previewButton.style.opacity = '0.7';
+  }
+
+  try {
   // Get or create bill number
   let billNo, billId;
   if (currentBillId) {
@@ -1304,9 +1321,11 @@ window.previewBill = async function() {
     billNo = existing?.billNo || await getNextBillNo();
     billId = currentBillId;
   } else {
-    billNo = await getNextBillNo();
+    // Create and retain one stable document ID before any asynchronous work.
+    // This prevents retries for this bill from creating a second document.
     billId = doc(collection(db,'users',currentUser.uid,'bills')).id;
     currentBillId = billId;
+    billNo = await getNextBillNo();
   }
 
   const now = new Date();
@@ -1357,11 +1376,47 @@ window.previewBill = async function() {
   window._viewingBillId = billId;
   renderBillContent(billData);
   goTo('preview');
+  } catch (error) {
+    console.error('Preview/save bill failed:', error);
+    showToast('Could not create bill. Please retry.');
+  } finally {
+    isPreviewingBill = false;
+    if (previewButton) {
+      previewButton.disabled = false;
+      previewButton.innerHTML = previewButton.dataset.originalHtml || '<i class="ti ti-eye"></i> Preview Bill →';
+      previewButton.style.opacity = '';
+      delete previewButton.dataset.originalHtml;
+    }
+  }
 };
 
+// Allocate bill numbers through a Firestore transaction. Use the highest
+// existing GS-#### suffix (not bills.length), so deleted bills/gaps do not
+// cause a previously used number to be reused.
 async function getNextBillNo() {
   const snap = await getDocs(userRef('bills'));
-  return 'GS-' + String(snap.size + 1).padStart(4,'0');
+  let highestExisting = 0;
+  snap.forEach(d => {
+    const match = String(d.data()?.billNo || '').match(/^GS-(\\d+)$/i);
+    if (match) highestExisting = Math.max(highestExisting, Number(match[1]) || 0);
+  });
+
+  const counterRef = doc(db, 'users', currentUser.uid, 'counters', 'bills');
+  const nextNumber = await runTransaction(db, async transaction => {
+    const counterSnap = await transaction.get(counterRef);
+    const storedNext = counterSnap.exists() ? Number(counterSnap.data().nextNumber) : 0;
+    const allocated = Math.max(
+      Number.isFinite(storedNext) && storedNext > 0 ? storedNext : 1,
+      highestExisting + 1
+    );
+    transaction.set(counterRef, {
+      nextNumber: allocated + 1,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    return allocated;
+  });
+
+  return 'GS-' + String(nextNumber).padStart(4, '0');
 }
 
 function renderBillContent(b) {
